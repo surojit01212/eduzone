@@ -1,7 +1,7 @@
 "use strict";
 
 // App update korle shudhu ei version number ta barao (v12 -> v13)
-const CACHE = "eduzone-v14";
+const CACHE = "eduzone-v22";
 const SHELL = ["./", "index.html", "style.css", "app.js", "manifest.json", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", function (e) {
@@ -35,7 +35,6 @@ self.addEventListener("fetch", function (e) {
   if (req.method !== "GET") return;
 
   const url = new URL(req.url);
-  if (/\.apk$/i.test(url.pathname)) return;   // the app download always comes straight from the server
   if (url.origin !== location.origin && url.hostname !== "www.gstatic.com") return;
 
   e.respondWith(

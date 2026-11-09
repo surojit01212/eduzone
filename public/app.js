@@ -2,12 +2,12 @@
 
 /* ---------- Firebase config ---------- */
 const firebaseConfig = {
-  apiKey: "AIzaSyCLn28yAoyuCD_3IU1QxlInumWE5BMmK6Q",
-  authDomain: "eduzone-012-78426.firebaseapp.com",
-  projectId: "eduzone-012-78426",
-  storageBucket: "eduzone-012-78426.firebasestorage.app",
-  messagingSenderId: "520388164558",
-  appId: "1:520388164558:web:ceab1f1ed33f0acd14099f"
+  apiKey: "AIzaSyBMnUqhMMXA7Nea5zsn93BuoHcTVmHxYtE",
+  authDomain: "eduzone-012-df020.firebaseapp.com",
+  projectId: "eduzone-012-df020",
+  storageBucket: "eduzone-012-df020.firebasestorage.app",
+  messagingSenderId: "619428019916",
+  appId: "1:619428019916:web:c9eb610c21e234e16acc69"
 };
 
 /* ---------- Lazy Firebase loader (timeout + retry) ---------- */
@@ -565,9 +565,6 @@ function saveUser(u) {
 }
 
 function roleText(u) {
-  if (u.type === "guest") {
-    return "Guest • " + (u.role === "teacher" ? "Teacher" : "Student");
-  }
   return u.role === "teacher" ? "Teacher" : "Student";
 }
 
@@ -631,25 +628,21 @@ function clearSession() {
     localStorage.removeItem("ez_sync");
     sessionStorage.removeItem("ez_admin");
   } catch (e) { /* ignore */ }
-  function done() { location.reload(); }
-  if (window.firebase && firebase.auth) {
-    firebase.auth().signOut().then(done, done);
-  } else {
-    done();
+  let fin = false;
+  function done() {
+    if (fin) return;
+    fin = true;
+    location.reload();
   }
+  // Auth is loaded first, so the old login is really signed out
+  const t = setTimeout(done, 5000);
+  loadAuth()
+    .then(function (a) { return a.signOut(); })
+    .catch(function () { /* ignore */ })
+    .then(function () { clearTimeout(t); done(); });
 }
 
 function logoutNow() {
-  if (user && user.type === "guest" && user.uid && navigator.onLine !== false) {
-    const gid = user.uid;
-    toast("Logging out...", true);
-    const t = setTimeout(clearSession, 3000);
-    loadAuth()
-      .then(function () { return firebase.firestore().collection("people").doc(gid).delete(); })
-      .catch(function () { /* ignore */ })
-      .then(function () { clearTimeout(t); clearSession(); });
-    return;
-  }
   clearSession();
 }
 
@@ -659,9 +652,8 @@ function doLogout() {
 }
 
 /* ---------- User registry (one small check when the app opens) ---------- */
-// people/{uid} = { name, role, guest, ts }. It is used for the Users list.
+// people/{uid} = { name, role, ts }. It is used for the Users list.
 // If the admin deletes a user, this phone is logged out on the next open.
-// Guests are not registered (rules only allow real accounts).
 function markSynced() {
   try { localStorage.setItem("ez_sync", String(Date.now())); } catch (e) { /* ignore */ }
 }
@@ -670,7 +662,7 @@ function markSynced() {
 function fullSync() {
   currentAuthUser()
     .then(function (u) {
-      if (!u || u.isAnonymous) return null;
+      if (!u) return null;
       // Ignore a different account
       if (u.email && user.email && u.email.toLowerCase() !== user.email.toLowerCase()) return null;
 
@@ -685,7 +677,7 @@ function fullSync() {
           let was = null;
           try { was = localStorage.getItem("ez_reg"); } catch (e) { was = null; }
           if (was === u.uid) { clearSession(); return null; }
-          return ref.set({ name: name, role: role, guest: false, ts: Date.now() })
+          return ref.set({ name: name, role: role, ts: Date.now() })
             .then(function () {
               try { localStorage.setItem("ez_reg", u.uid); } catch (e) { /* ignore */ }
             });
@@ -704,45 +696,6 @@ function fullSync() {
 
 // Opens fast: one tiny web request, at most once every 6 hours, after the first screen.
 // If the admin deleted this user, this phone is logged out.
-// Guests are not registered (rules only allow real accounts).
-// A guest gets an anonymous ID so the admin and the Users page can see the guest.
-function fullSyncGuest() {
-  currentAuthUser()
-    .then(function (u) {
-      if (u && !u.isAnonymous) return null;
-      if (u) return u;
-      return firebase.auth().signInAnonymously().then(function (c) { return c.user; });
-    })
-    .then(function (u) {
-      if (!u || !user) return null;
-      if (user.uid !== u.uid) saveUser(Object.assign({}, user, { uid: u.uid }));
-
-      const ref = firebase.firestore().collection("people").doc(u.uid);
-      const role = user.role === "teacher" ? "teacher" : "student";
-      const name = String(user.name || "Guest").slice(0, 80);
-
-      return ref.get().then(function (d) {
-        if (!d.exists) {
-          let was = null;
-          try { was = localStorage.getItem("ez_reg"); } catch (e) { was = null; }
-          if (was === u.uid) { clearSession(); return null; }
-          return ref.set({ name: name, role: role, guest: true, ts: Date.now() })
-            .then(function () {
-              try { localStorage.setItem("ez_reg", u.uid); } catch (e) { /* ignore */ }
-            });
-        }
-        try { localStorage.setItem("ez_reg", u.uid); } catch (e) { /* ignore */ }
-        const x = d.data();
-        if (x.name !== name || x.role !== role) return ref.update({ name: name, role: role });
-        return null;
-      });
-    })
-    .then(markSynced)
-    .catch(function () { /* try again next time */ });
-}
-
-// Opens fast: one tiny web request, at most once every 6 hours, after the first screen.
-// If the admin deleted this user, this phone is logged out.
 function syncMe() {
   if (!user || navigator.onLine === false) return;
 
@@ -752,9 +705,8 @@ function syncMe() {
 
   setTimeout(function () {
     if (!user) return;
-    const guest = user.type === "guest";
 
-    if (!user.uid) { if (guest) fullSyncGuest(); else fullSync(); return; }
+    if (!user.uid) { fullSync(); return; }
 
     const uid = user.uid;
     readDoc("people", uid)
@@ -766,14 +718,12 @@ function syncMe() {
           try { localStorage.setItem("ez_reg", uid); } catch (e) { /* ignore */ }
         } else if (was === uid) {
           clearSession();
-        } else if (guest) {
-          fullSyncGuest();
         } else {
           fullSync();
         }
       })
       .catch(function () { /* try again next time */ });
-  }, 4000);
+    }, user.uid ? 4000 : 300);
 }
 
 /* ---------- Auth screen ---------- */
@@ -782,16 +732,13 @@ let photoData = "";
 
 function setAuthMode(m) {
   authMode = m;
-  $("authTabs").hidden = !(m === "login" || m === "guest");
-  $("aTabLogin").classList.toggle("on", m === "login");
-  $("aTabGuest").classList.toggle("on", m === "guest");
   $("loginForm").hidden = m !== "login";
-  $("pForm").hidden = !(m === "register" || m === "guest");
+  $("pForm").hidden = m !== "register";
   $("fForm").hidden = m !== "forgot";
   $("credWrap").hidden = m !== "register";
   $("pBack").hidden = m !== "register";
-  $("pTitle").textContent = m === "register" ? "Register" : "Continue as a guest";
-  $("pBtn").textContent = m === "register" ? "Create account" : "Continue as guest";
+  $("pTitle").textContent = "Register";
+  $("pBtn").textContent = "Create account";
   setMsg(aMsg, "");
   authView.scrollTop = 0;
 }
@@ -828,13 +775,11 @@ function authError(err, el) {
   } else if (c === "auth/requires-recent-login") {
     m = "Please log out and log in again, then try.";
   } else if (c === "auth/operation-not-allowed") {
-    m = "Enable this sign-in method in Firebase Authentication.";
+    m = "Enable Email/Password sign-in in Firebase Authentication.";
   }
   setMsg(el && el.nodeType === 1 ? el : aMsg, m, "err");
 }
 
-$("aTabLogin").addEventListener("click", function () { setAuthMode("login"); });
-$("aTabGuest").addEventListener("click", function () { setAuthMode("guest"); });
 $("toReg").addEventListener("click", function () { setAuthMode("register"); });
 $("toForgot").addEventListener("click", function () { setAuthMode("forgot"); });
 $("pBack").addEventListener("click", function () { setAuthMode("login"); });
@@ -919,15 +864,6 @@ $("pForm").addEventListener("submit", function (e) {
   e.preventDefault();
   const p = readProfile();
   if (!p) return;
-
-  // Guest: no Firebase needed, saved on this phone only
-  if (authMode === "guest") {
-    p.type = "guest";
-    p.email = "";
-    saveUser(p);
-    enterApp();
-    return;
-  }
 
   const email = $("pEmail").value.trim();
   const pass = $("pPass").value;
@@ -1435,7 +1371,6 @@ function saveProfile() {
     if (photo) ch.photo = photo;   // optional
   }
 
-  const isAccount = user.type === "account";
   const role = user.role;
 
   // Saved on the phone first
@@ -1444,6 +1379,7 @@ function saveProfile() {
   $("epHName").textContent = name;
   drawProfAv(user.photo || "");
   logCache = null;
+  actUsers = null;
 
   const btn = $("epSave");
   btn.disabled = true;
@@ -1451,19 +1387,10 @@ function saveProfile() {
 
   currentAuthUser()
     .then(function (u) {
-      if (!u) return !isAccount;
-      if (u.isAnonymous) {
-        if (isAccount) return false;
-        return firebase.firestore().collection("people").doc(u.uid)
-          .update({ name: name.slice(0, 80) })
-          .catch(function () { /* ignore */ })
-          .then(function () { return true; });
-      }
+      if (!u) return false;
       const db = firebase.firestore();
       const jobs = [];
-      if (isAccount) {
-        jobs.push(db.collection("users").doc(u.uid).set(Object.assign({ role: role }, ch), { merge: true }));
-      }
+      jobs.push(db.collection("users").doc(u.uid).set(Object.assign({ role: role }, ch), { merge: true }));
       jobs.push(db.collection("people").doc(u.uid).update({ name: name.slice(0, 80) }).catch(function () { /* ignore */ }));
       return Promise.all(jobs).then(function () { return true; });
     })
@@ -1492,7 +1419,7 @@ function changePass() {
 
   currentAuthUser()
     .then(function (u) {
-      if (!u || u.isAnonymous) throw { code: "auth/requires-recent-login" };
+      if (!u) throw { code: "auth/requires-recent-login" };
       const cred = firebase.auth.EmailAuthProvider.credential(user.email, cur);
       return u.reauthenticateWithCredential(cred).then(function () {
         return u.updatePassword(np);
@@ -1509,7 +1436,7 @@ function changePass() {
 
 $("pwBtn").addEventListener("click", changePass);
 
-/* ---------- Submit (user): Notes / Routine / PYQ & Papers / Question Bank ---------- */
+/* ---------- Submit (logged-in users): Notes / Routine / PYQ & Papers / Question Bank ---------- */
 // Same information as the admin panel. Trusted users and admins publish directly,
 // everyone else goes to the admin's Requests list.
 let smReady = false;
@@ -1565,17 +1492,15 @@ function buildPublic(e, uid, name) {
 }
 
 function sendEntry(entry, btn, reset) {
-  // Only registered accounts can submit (database rules)
-  if (!user || user.type === "guest") {
-    setMsg(smMsg, "Guests cannot submit. Please register with your email.", "err");
+  if (!user) {
+    setMsg(smMsg, "Please log in first.", "err");
     return;
   }
 
   const by = {
     name: (user.name || "Unknown").slice(0, 80),
     role: user.role === "teacher" ? "teacher" : "student",
-    email: user.email || "",
-    guest: false
+    email: user.email || ""
   };
   if (user.school) by.school = user.school;
   if (user.tuition) by.tuition = user.tuition;
@@ -1590,7 +1515,10 @@ function sendEntry(entry, btn, reset) {
 
   currentAuthUser()
     .then(function (u) {
-      if (!u || u.isAnonymous) throw { code: "nosession" };
+      if (!u) throw { code: "nosession" };
+      return u;
+    })
+    .then(function (u) {
       uid = u.uid;
       const db = firebase.firestore();
       const yes = function (d) { return d.exists; };
@@ -1619,10 +1547,13 @@ function sendEntry(entry, btn, reset) {
         : "Submitted ✓ It will go live after admin approval.", "ok");
     })
     .catch(function (err) {
-      if (err && err.code === "nosession") {
+      const c = (err && err.code) || "";
+      if (c === "nosession") {
         setMsg(smMsg, "Session ended. Please log out and log in again, then submit.", "err");
-      } else if (err && err.code === "permission-denied") {
+      } else if (c === "permission-denied") {
         setMsg(smMsg, "Not allowed. Please log out and log in again.", "err");
+      } else if (c === "auth/operation-not-allowed") {
+        authError(err, smMsg);
       } else {
         setMsg(smMsg, "Could not submit. Check your internet and try again.", "err");
       }
@@ -1659,9 +1590,6 @@ function openSubmit(tab) {
   smView.hidden = false;
   smView.scrollTop = 0;
   setSmTab(tab || smTab);
-  if (!user || user.type === "guest") {
-    setMsg(smMsg, "Guests cannot submit. Please register with your email.", "err");
-  }
   syncScroll();
 }
 
@@ -2003,12 +1931,12 @@ $("rtClose").addEventListener("click", closeRoutine);
 /* ---------- Activity: Recent (what was published, by whom, when) + Users ---------- */
 // Light by design: a few small reads, the last result is shown instantly from the
 // phone, and a user's uploads load only when you tap View.
-let usersCache = null;   // { arr, t }  people list (admin Users tab)
+let usersCache = null;   // { arr, t }  people list (admin Recent > New users)
 let logCache = null;     // { arr, t }  recently published items
-let actUsers = null;     // { arr, t }  people + Admin / Trusted badges
+let actUsers = null;     // { arr, t }  people + Admin / Trusted badges + upload counts
 const actList = $("actList");
 
-// People list used by the admin Users tab
+// People list used by the admin Recent > New users tab
 function loadPeople(force, cb) {
   if (usersCache && !force && Date.now() - usersCache.t < 30000) { cb(true); return; }
   readCol({ col: "people", order: "ts", desc: true, limit: 300 })
@@ -2108,6 +2036,7 @@ function renderFeed(target) {
   target.appendChild(frag);
 }
 
+// People (users) + badges + how many items each one uploaded
 function loadActUsers(force, cb) {
   if (actUsers && !force && Date.now() - actUsers.t < 60000) { cb(true); return; }
 
@@ -2137,10 +2066,10 @@ function loadActUsers(force, cb) {
       const arr = r[0].map(function (x) {
         const c = cnt[x.id] || { note: 0, paper: 0, qb: 0 };
         return {
+          id: x.id,
           uid: x.id,
           name: x.name || "User",
           role: x.role,
-          guest: !!x.guest,
           ts: x.ts || 0,
           trusted: !!trusted[x.id],
           admin: !!admins[x.id],
@@ -2156,6 +2085,29 @@ function loadActUsers(force, cb) {
       cb(true);
     })
     .catch(function () { cb(false); });
+}
+
+// Upload count chips for one person (used in the Users page and the admin Users tab)
+function makeChips(g) {
+  const chips = document.createElement("div");
+  chips.className = "chips";
+  function chip(text, zero, main) {
+    const c = document.createElement("span");
+    c.className = "chip" + (zero ? " zero" : "") + (main ? " main" : "");
+    c.textContent = text;
+    chips.appendChild(c);
+  }
+  if (!actUsers || !actUsers.counted) {
+    // upload counts could not be loaded, show nothing instead of a wrong number
+  } else if (!g.total) {
+    chip("No uploads yet", true);
+  } else {
+    chip(g.total + (g.total === 1 ? " upload" : " uploads"), false, true);
+    chip("Notes " + g.c.note, !g.c.note);
+    chip("PYQ " + g.c.paper, !g.c.paper);
+    chip("Question Bank " + g.c.qb, !g.c.qb);
+  }
+  return chips;
 }
 
 function renderActUsers() {
@@ -2211,30 +2163,11 @@ function renderActUsers() {
     const s = document.createElement("div");
     s.className = "s";
     s.textContent = (g.role === "teacher" ? "Teacher" : "Student") +
-      (g.guest ? " • Guest" : "") + (g.ts ? " • Joined " + fmtFull(g.ts) : "");
-
-    const chips = document.createElement("div");
-    chips.className = "chips";
-    function chip(text, zero, main) {
-      const c = document.createElement("span");
-      c.className = "chip" + (zero ? " zero" : "") + (main ? " main" : "");
-      c.textContent = text;
-      chips.appendChild(c);
-    }
-    if (!actUsers.counted) {
-      // upload counts could not be loaded, show nothing instead of a wrong number
-    } else if (!g.total) {
-      chip("No uploads yet", true);
-    } else {
-      chip(g.total + (g.total === 1 ? " upload" : " uploads"), false, true);
-      chip("Notes " + g.c.note, !g.c.note);
-      chip("PYQ " + g.c.paper, !g.c.paper);
-      chip("Question Bank " + g.c.qb, !g.c.qb);
-    }
+      (g.ts ? " • Joined " + fmtFull(g.ts) : "");
 
     mid.appendChild(t);
     mid.appendChild(s);
-    mid.appendChild(chips);
+    mid.appendChild(makeChips(g));
 
     const v = document.createElement("button");
     v.type = "button";
@@ -2556,7 +2489,7 @@ function enterPanel() {
 function openPanel() {
   if (isAdmin) { enterPanel(); return; }
 
-  if (!user || user.type === "guest") {
+  if (!user) {
     toast("Admin access only.");
     return;
   }
@@ -2579,7 +2512,7 @@ function openPanel() {
 
   withTimeout(
     currentAuthUser().then(function (u) {
-      if (!u || u.isAnonymous) return false;
+      if (!u) return false;
       return checkAdmin(u).then(function (ok) {
         // Public admin list (powers the Admin badge in Activity)
         if (ok && !adminNoted) {
@@ -2731,7 +2664,7 @@ function renderRcUsers() {
 
     const s = document.createElement("div");
     s.className = "s";
-    s.textContent = u.role === "teacher" ? "Teacher" : "Student";
+    s.textContent = (u.role === "teacher" ? "Teacher" : "Student");
 
     const w = document.createElement("div");
     w.className = "when";
@@ -2945,6 +2878,7 @@ function saveNote() {
       notesCache = null;
       subCache = {};
       logCache = null;
+      actUsers = null;
       lsBust();
       showMsg(wasEditing ? "Note updated ✓" : "Note uploaded ✓", "ok");
       if (wasEditing) switchTab("manage");
@@ -3090,6 +3024,7 @@ listEl.addEventListener("click", function (e) {
             notesCache = notesCache.filter(function (n) { return n.id !== id; });
             subCache = {};
             logCache = null;
+            actUsers = null;
             lsBust();
             box.remove();
             if (!listEl.children.length) renderNotes();
@@ -3214,7 +3149,7 @@ function buildDetail(r) {
 
   addLine(d, "Submitted by", by.name);
   addLine(d, "Submitted on", fmtFull(r.ts));
-  addLine(d, "Role", (by.role === "teacher" ? "Teacher" : "Student") + (by.guest ? " (Guest)" : ""));
+  addLine(d, "Role", (by.role === "teacher" ? "Teacher" : "Student"));
   addLine(d, "School", by.school);
   addLine(d, "Tuition", by.tuition);
   addLine(d, "Email", by.email);
@@ -3696,6 +3631,7 @@ function savePaper() {
       ppReset();
       adminPapers = null;
       ppCache = {};
+      actUsers = null;
       lsBust();
       loadAdminPapers();
       showMsg(edited ? "Paper updated ✓" : "Paper uploaded ✓", "ok");
@@ -3746,6 +3682,7 @@ function saveQb() {
       qbReset();
       adminPapers = null;
       ppCache = {};
+      actUsers = null;
       lsBust();
       loadAdminPapers();
       showMsg(edited ? "Item updated ✓" : "Item uploaded ✓", "ok");
@@ -3894,6 +3831,7 @@ function paperListClick(e) {
           .then(function () {
             adminPapers = adminPapers.filter(function (x) { return x.id !== id; });
             ppCache = {};
+            actUsers = null;
             lsBust();
             renderAdminPapers();
             showMsg("Deleted ✓", "ok");
@@ -3906,7 +3844,9 @@ function paperListClick(e) {
 ppAdminList.addEventListener("click", paperListClick);
 qbAdminList.addEventListener("click", paperListClick);
 
-/* ---------- Admin: Users (Details / Notes / Access / Delete) ---------- */
+/* ---------- Admin: Users (with upload counts) ---------- */
+// Uses the same list as the Users page (actUsers), so users and their
+// upload counts show here too. Details / Uploads / Access / Delete per person.
 const usList = $("usList");
 const usDetail = $("usDetail");
 const usBody = $("usBody");
@@ -3917,12 +3857,13 @@ function loadUsersTab(force) {
   usSel = null;
   usDetail.hidden = true;
   usList.hidden = false;
-  if (!usersCache || force) emptyText(usList, "Loading...");
+  if (!actUsers || force) emptyText(usList, "Loading...");
 
-  loadPeople(force, function (ok) {
+  loadActUsers(force, function (ok) {
+    if (panel.hidden || $("usersView").hidden) return;
     if (ok) {
       renderUsers();
-    } else {
+    } else if (!actUsers) {
       errorText(usList, "Could not load users. Check rules and internet.", function () { loadUsersTab(true); });
     }
   });
@@ -3930,16 +3871,16 @@ function loadUsersTab(force) {
 
 function renderUsers() {
   usList.innerHTML = "";
-  const users = ((usersCache && usersCache.arr) || []).slice();
+  const users = ((actUsers && actUsers.arr) || []).slice();
   if (!users.length) {
-    emptyText(usList, "No users yet. Users appear here after they open the app.");
+    emptyText(usList, "No users yet. Users appear here after they register.");
     return;
   }
-  users.sort(function (a, b) { return (a.name || "").localeCompare(b.name || ""); });
 
   const sum = document.createElement("p");
   sum.className = "sumline";
-  sum.textContent = users.length + " users • tap Open to manage";
+  sum.textContent = users.length + (users.length === 1 ? " user" : " users") +
+    " • tap Open to manage";
   usList.appendChild(sum);
 
   const frag = document.createDocumentFragment();
@@ -3954,7 +3895,8 @@ function renderUsers() {
 
     const s = document.createElement("div");
     s.className = "s";
-    s.textContent = (u.role === "teacher" ? "Teacher" : "Student") + (u.guest ? " • Guest" : " • Email");
+    s.textContent = (u.role === "teacher" ? "Teacher" : "Student") + " • Email" +
+      (u.ts ? " • Joined " + fmtFull(u.ts) : "");
 
     const acts = document.createElement("div");
     acts.className = "acts";
@@ -3966,6 +3908,7 @@ function renderUsers() {
 
     box.appendChild(t);
     box.appendChild(s);
+    box.appendChild(makeChips(u));
     box.appendChild(acts);
     frag.appendChild(box);
   });
@@ -3974,10 +3917,10 @@ function renderUsers() {
 
 usList.addEventListener("click", function (e) {
   const box = e.target.closest(".note");
-  if (!box || !usersCache) return;
+  if (!box || !actUsers) return;
   const id = box.dataset.id;
-  for (let i = 0; i < usersCache.arr.length; i++) {
-    if (usersCache.arr[i].id === id) { openUser(usersCache.arr[i]); return; }
+  for (let i = 0; i < actUsers.arr.length; i++) {
+    if (actUsers.arr[i].id === id) { openUser(actUsers.arr[i]); return; }
   }
 });
 
@@ -3993,7 +3936,7 @@ function openUser(u) {
   usTab = "d";
   usList.hidden = true;
   usDetail.hidden = false;
-  $("usName").textContent = u.name || "User";
+  $("usName").textContent = (u.name || "User");
   setUsTabs();
   renderUsBody();
   panel.scrollTop = 0;
@@ -4024,29 +3967,35 @@ function renderUsBody() {
 
   emptyText(usBody, "Loading...");
 
-  /* Details */
+  /* Details (from users) */
   if (tab === "d") {
-    const isGuest = !!u.guest;
-    const getProfile = isGuest
-      ? Promise.resolve(null)
-      : loadFirebase()
-          .then(function (db) { return db.collection("users").doc(id).get(); })
-          .then(function (d) { return d.exists ? d.data() : null; })
-          .catch(function () { return null; });
-
-    getProfile.then(function (p) {
-      if (stale()) return;
-      const box = document.createElement("div");
-      box.className = "dbox";
-      addLine(box, "Name", u.name || "");
-      addLine(box, "Role", u.role === "teacher" ? "Teacher" : "Student");
-      addLine(box, "Login", isGuest ? "Guest" : "Email & password");
-      if (!isGuest) addLine(box, "Email", (p && p.email) || "-");
-      addLine(box, "Registered", fmtFull((p && p.createdAt) || u.ts));
-      addLine(box, "User ID", id);
-      usBody.innerHTML = "";
-      usBody.appendChild(box);
-    });
+    loadFirebase()
+      .then(function (db) { return db.collection("users").doc(id).get(); })
+      .then(function (d) { return d.exists ? d.data() : null; })
+      .catch(function () { return null; })
+      .then(function (p) {
+        if (stale()) return;
+        const box = document.createElement("div");
+        box.className = "dbox";
+        addLine(box, "Name", u.name || "");
+        addLine(box, "Role", u.role === "teacher" ? "Teacher" : "Student");
+        addLine(box, "Login", "Email & password");
+        addLine(box, "Email", (p && p.email) || "-");
+        if (u.role === "teacher") {
+          addLine(box, "Tuition", (p && p.tuition) || "-");
+        } else {
+          addLine(box, "School", (p && p.school) || "-");
+          addLine(box, "Date of birth", (p && p.dob) || "-");
+        }
+        addLine(box, "Registered", fmtFull((p && p.createdAt) || u.ts));
+        if (actUsers && actUsers.counted) {
+          addLine(box, "Uploads", u.total + " total • Notes " + u.c.note +
+            " • PYQ " + u.c.paper + " • Question Bank " + u.c.qb);
+        }
+        addLine(box, "User ID", id);
+        usBody.innerHTML = "";
+        usBody.appendChild(box);
+      });
     return;
   }
 
@@ -4126,7 +4075,11 @@ function toggleTrusted(id, on, btn) {
       return ref.set({ name: (usSel && usSel.name) || "", ts: Date.now() });
     })
     .then(function () {
-      logCache = null;   // Activity shows the Trusted badge, so refresh it next time
+      logCache = null;
+      // Keep the badge in the lists up to date
+      if (actUsers) {
+        actUsers.arr.forEach(function (x) { if (x.id === id) x.trusted = !on; });
+      }
       showMsg(on ? "Direct upload removed ✓" : "Selected ✓ This user can upload directly", "ok");
       if (usSel && usSel.id === id && usTab === "a") renderAccess(id, !on);
     })
@@ -4168,6 +4121,9 @@ function runDeleteUser(id, btn) {
       if (usersCache) {
         usersCache.arr = usersCache.arr.filter(function (x) { return x.id !== id; });
       }
+      if (actUsers) {
+        actUsers.arr = actUsers.arr.filter(function (x) { return x.id !== id; });
+      }
       logCache = null;
       notesCache = null;
       usSel = null;
@@ -4183,7 +4139,17 @@ function runDeleteUser(id, btn) {
 }
 
 /* ---------- Start ---------- */
-if (user) {
+if (user && user.type === "guest") {
+  // Guest login was removed: clear the old guest session and ask for a real login
+  user = null;
+  try {
+    ["ez_user", "ez_reg", "ez_gp", "ez_pend", "ez_sync"].forEach(function (k) { localStorage.removeItem(k); });
+  } catch (e) { /* ignore */ }
+  currentAuthUser()
+    .then(function (u) { return u && u.isAnonymous ? firebase.auth().signOut() : null; })
+    .catch(function () { /* ignore */ });
+  showAuth();
+} else if (user) {
   renderUserBox();
   syncMe();
 } else {
