@@ -330,6 +330,28 @@ const subView = $("subView");
 const rtView = $("rtView");
 const smView = $("smView");
 const authView = $("authView");
+
+/* ---------- Install button (downloads the Android APK from GitHub Releases) ---------- */
+// "latest" always points to your newest release, so after every new build the
+// button gives the new APK. The APK file in the release must be named EduZone.apk.
+// To use a fixed version instead, use:
+// https://github.com/surojit01212/eduzone/releases/download/v2/EduZone.apk
+const APK_URL = "https://github.com/surojit01212/eduzone/releases/latest/download/EduZone.apk";
+
+(function setupInstall() {
+  const btn = $("installBtn");
+  if (!btn) return;
+  // Already inside the installed app (APK / home-screen app): no button needed
+  let inApp = false;
+  try {
+    inApp = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
+      window.navigator.standalone === true ||
+      String(document.referrer || "").indexOf("android-app://") === 0;
+  } catch (e) { inApp = false; }
+  if (inApp) return;
+  btn.href = APK_URL;
+  btn.hidden = false;
+})();
 const msgEl = $("msg");
 const aMsg = $("aMsg");
 const smMsg = $("smMsg");

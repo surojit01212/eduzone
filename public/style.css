@@ -124,6 +124,16 @@ img { -webkit-user-drag: none; }
 
 .tbtn:active { opacity: 0.7; }
 
+/* Install icon in the header (link styled like the other header buttons) */
+a.tbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+a.tbtn[hidden] { display: none; }
+
 /* ---------- Subject grid ---------- */
 .grid {
   display: grid;
@@ -1242,4 +1252,33 @@ html.lite #reloadBtn.spin, html.lite #actRefresh.spin { animation-duration: 1s; 
 /* The reload spin is tiny and important feedback, so it also runs when the system asks for reduced motion */
 @media (prefers-reduced-motion: reduce) {
   #reloadBtn.spin, #actRefresh.spin { animation: ez-spin 1s linear infinite !important; }
+}
+
+/* ---------- Install + small reload button group (home header) ---------- */
+.tgrp {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Small reload button, same look and same spin as the Users tab refresh */
+.tbtn.tsmall {
+  width: 32px;
+  min-width: 32px;
+  height: 32px;
+  padding: 0;
+  font-size: 18px;
+  line-height: 1;
+  border-radius: 9px;
+}
+
+#reloadBtn.spin {
+  will-change: transform;
+  transform-origin: 50% 50%;
+}
+
+@media (max-width: 380px) {
+  .tgrp { gap: 4px; }
+  .tbtn.tsmall { width: 30px; min-width: 30px; height: 30px; font-size: 17px; }
 }
