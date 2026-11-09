@@ -1,0 +1,668 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, minimum-scale=1, maximum-scale=1, user-scalable=no">
+  <meta name="theme-color" content="#4f46e5">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>EduZone</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+  <script>
+    // Weak phones get the extra-light animation mode (fade only)
+    try {
+      var mem = navigator.deviceMemory || 4;
+      var cores = navigator.hardwareConcurrency || 4;
+      var sd = navigator.connection && navigator.connection.saveData;
+      if (mem <= 2 || cores <= 4 || sd) document.documentElement.className += " lite";
+    } catch (e) { /* ignore */ }
+
+    // Block pinch zoom on iOS (no scroll-blocking listeners, so scrolling stays smooth)
+    ["gesturestart", "gesturechange", "gestureend"].forEach(function (n) {
+      document.addEventListener(n, function (e) { e.preventDefault(); });
+    });
+    document.addEventListener("keydown", function (e) {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "+" || e.key === "-" || e.key === "=" || e.key === "0")) e.preventDefault();
+    });
+  </script>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="top">
+    <button class="menu-btn" id="menuBtn" type="button" aria-label="Menu">☰</button>
+    <div class="brand">
+      <h1>EduZone <span class="by">by Surojit</span></h1>
+      <p>Select your subject</p>
+    </div>
+    <button class="tbtn" id="reloadBtn" type="button" aria-label="Reload app">&#8635;</button>
+    <button class="tbtn" id="profBtn" type="button" aria-label="My profile" hidden>Profile</button>
+  </header>
+
+  <main class="grid" id="subjects">
+    <button class="card c1" data-subject="bengali">
+      <span class="icon">📖</span>
+      <span class="name">Bengali</span>
+    </button>
+    <button class="card c2" data-subject="english">
+      <span class="icon">🔤</span>
+      <span class="name">English</span>
+    </button>
+    <button class="card c3" data-subject="math">
+      <span class="icon">➗</span>
+      <span class="name">Math</span>
+    </button>
+    <button class="card c4" data-subject="life-science">
+      <span class="icon">🌱</span>
+      <span class="name">Life Science</span>
+    </button>
+    <button class="card c5" data-subject="physical-science">
+      <span class="icon">⚛️</span>
+      <span class="name">Physical Science</span>
+    </button>
+    <button class="card c6" data-subject="history">
+      <span class="icon">🏛️</span>
+      <span class="name">History</span>
+    </button>
+    <button class="card c7" data-subject="geography">
+      <span class="icon">🌍</span>
+      <span class="name">Geography</span>
+    </button>
+  </main>
+
+  <!-- Side menu -->
+  <div class="overlay" id="overlay"></div>
+  <nav class="drawer" id="drawer" aria-label="Menu">
+    <div class="drawer-head">
+      <span>EduZone</span>
+      <button class="close-btn" id="drawerClose" type="button">✕</button>
+    </div>
+    <div class="ubox" id="uBox" hidden></div>
+    <div class="drawer-list" id="drawerList"></div>
+  </nav>
+
+  <!-- Subject page -->
+  <section class="panel" id="subView" hidden>
+    <div class="panel-in">
+      <div class="panel-head">
+        <h2 id="subTitle">Subject</h2>
+        <button class="close-btn" id="subClose" type="button">✕</button>
+      </div>
+      <div class="tabs" id="subTabs"></div>
+      <div id="subList"></div>
+    </div>
+  </section>
+
+  <!-- Routine page -->
+  <section class="panel" id="rtView" hidden>
+    <div class="panel-in">
+      <div class="panel-head">
+        <h2 id="rtTitle">Routine</h2>
+        <button class="close-btn" id="rtClose" type="button">✕</button>
+      </div>
+      <div class="tabs" id="rtTabs"></div>
+      <div id="rtList"></div>
+    </div>
+  </section>
+
+  <!-- Papers / Question Bank page (student) -->
+  <section class="panel" id="ppView" hidden>
+    <div class="panel-in">
+      <div class="panel-head">
+        <h2 id="ppHead">Papers</h2>
+        <button class="close-btn" id="ppClose" type="button">✕</button>
+      </div>
+      <label class="lbl" for="ppFilter">Subject</label>
+      <select class="inp" id="ppFilter"></select>
+      <div id="ppList"></div>
+    </div>
+  </section>
+
+  <!-- Activity page -->
+  <section class="panel" id="actView" hidden>
+    <div class="panel-in">
+      <div class="panel-head">
+        <h2>Users</h2>
+        <div class="hbtns">
+          <button class="close-btn" id="actRefresh" type="button" aria-label="Refresh">↻</button>
+          <button class="close-btn" id="actClose" type="button">✕</button>
+        </div>
+      </div>
+      <div id="actList"></div>
+    </div>
+  </section>
+
+  <!-- Contact Us page -->
+  <section class="panel" id="ctView" hidden>
+    <div class="panel-in">
+      <div class="panel-head">
+        <h2>Contact Us</h2>
+        <button class="close-btn" id="ctClose" type="button">✕</button>
+      </div>
+      <div id="ctBody"></div>
+    </div>
+  </section>
+
+  <div class="lbox" id="lbox" hidden><img id="lboxImg" alt=""></div>
+
+  <!-- My profile -->
+  <section class="panel" id="profView" hidden>
+    <div class="panel-in">
+      <div class="panel-head">
+        <h2>My Profile</h2>
+        <button class="close-btn" id="profClose" type="button">✕</button>
+      </div>
+
+      <div class="pcard">
+        <div class="pav" id="epAv"></div>
+        <div class="pinfo">
+          <div class="pname" id="epHName"></div>
+          <div class="prole" id="epRole"></div>
+        </div>
+      </div>
+
+      <h3 class="ptitle">Personal details</h3>
+      <label class="lbl" for="epName">Full name</label>
+      <input class="inp" id="epName" type="text" autocomplete="name" placeholder="Your full name">
+
+      <div id="epStuWrap">
+        <label class="lbl" for="epSchool">School name</label>
+        <input class="inp" id="epSchool" type="text" placeholder="Your school name">
+        <label class="lbl" for="epDob">Date of birth</label>
+        <input class="inp" id="epDob" type="date">
+        <label class="lbl" for="epPhoto">Profile picture (optional) &middot; hold the photo to view it</label>
+        <input class="inp" id="epPhoto" type="file" accept="image/*">
+      </div>
+
+      <div id="epTchWrap" hidden>
+        <label class="lbl" for="epTuition">Which tuition do you teach at?</label>
+        <input class="inp" id="epTuition" type="text" placeholder="Tuition name">
+      </div>
+
+      <button class="btn" id="epSave" type="button">Save profile</button>
+
+      <div id="pwWrap">
+        <h3 class="ptitle">Change password</h3>
+        <label class="lbl" for="epCur">Current password</label>
+        <input class="inp" id="epCur" type="password" autocomplete="current-password" placeholder="Current password">
+        <label class="lbl" for="epNew">New password</label>
+        <input class="inp" id="epNew" type="password" autocomplete="new-password" placeholder="At least 6 characters">
+        <button class="btn ghost" id="pwBtn" type="button">Change password</button>
+      </div>
+
+      <p class="msg" id="epMsg" role="status"></p>
+    </div>
+  </section>
+
+  <!-- Submit (Notes / Routine / PYQ & Papers / Question Bank) -->
+  <section class="panel" id="smView" hidden>
+    <div class="panel-in">
+      <div class="panel-head">
+        <h2>Submit</h2>
+        <button class="close-btn" id="smClose" type="button">✕</button>
+      </div>
+      <p class="hint">Your submission will be published after admin review.</p>
+
+      <div class="tabs grid2" id="smTabs" style="margin-top:12px">
+        <button class="tab on" data-t="note" type="button">📝 Notes</button>
+        <button class="tab" data-t="routine" type="button">🗓️ Routine</button>
+        <button class="tab" data-t="paper" type="button">📄 PYQ &amp; Papers</button>
+        <button class="tab" data-t="qb" type="button">🗂️ Question Bank</button>
+      </div>
+
+      <!-- Guide (Notes, Papers, Question Bank use a Drive link) -->
+      <details class="guide" id="smGuide">
+        <summary>How to get a Google Drive link</summary>
+        <div class="tabs" id="gTabs" style="margin-top:10px">
+          <button class="tab on" id="gTabBn" type="button">বাংলা</button>
+          <button class="tab" id="gTabEn" type="button">English</button>
+        </div>
+
+        <div id="gBn">
+          <h4>Google Drive লিংক কীভাবে বের করবেন</h4>
+          <ol>
+            <li>Google Drive অ্যাপ (বা drive.google.com) খুলুন এবং আপনার ফাইলটি (PDF/ছবি) আপলোড করুন।</li>
+            <li>ফাইলের পাশে থাকা <b>⋮</b> (তিন ডট) এ ট্যাপ করুন।</li>
+            <li><b>Share</b> (শেয়ার) এ ট্যাপ করুন।</li>
+            <li><b>General access</b> এর নিচে <b>Restricted</b> এ ট্যাপ করে <b>Anyone with the link</b> বেছে নিন।</li>
+            <li>পাশের অপশনটি <b>Viewer</b> রাখুন।</li>
+            <li><b>Copy link</b> এ ট্যাপ করুন, তারপর <b>Done</b> চাপুন।</li>
+            <li>এখানে ফিরে এসে নিচের <b>link</b> বক্সে লিংকটি Paste করুন।</li>
+          </ol>
+          <p class="gnote">মনে রাখবেন: "Anyone with the link" না করলে অন্যরা ফাইলটি খুলতে পারবে না।</p>
+        </div>
+
+        <div id="gEn" hidden>
+          <h4>How to get your Google Drive link</h4>
+          <ol>
+            <li>Open the Google Drive app (or drive.google.com) and upload your file (PDF/image).</li>
+            <li>Tap the <b>⋮</b> (three dots) next to the file.</li>
+            <li>Tap <b>Share</b>.</li>
+            <li>Under <b>General access</b>, tap <b>Restricted</b> and choose <b>Anyone with the link</b>.</li>
+            <li>Keep the role as <b>Viewer</b>.</li>
+            <li>Tap <b>Copy link</b>, then tap <b>Done</b>.</li>
+            <li>Come back here and paste the link in the <b>link</b> box below.</li>
+          </ol>
+          <p class="gnote">Note: if you don't choose "Anyone with the link", others will not be able to open your file.</p>
+        </div>
+      </details>
+
+      <!-- Notes -->
+      <div id="smNote">
+        <label class="lbl" for="smSubject">Subject</label>
+        <select class="inp" id="smSubject"></select>
+
+        <label class="lbl" for="smType">Note type</label>
+        <select class="inp" id="smType"></select>
+
+        <div id="smChapter">
+          <label class="lbl" for="smChName">Chapter name</label>
+          <input class="inp" id="smChName" type="text" placeholder="e.g. Light">
+          <label class="lbl" for="smChNo">Chapter number</label>
+          <input class="inp" id="smChNo" type="number" inputmode="numeric" min="1" placeholder="e.g. 1">
+        </div>
+
+        <div id="smTopicWrap" hidden>
+          <label class="lbl" for="smTopic" id="smLblTopic">Topic name</label>
+          <input class="inp" id="smTopic" type="text" placeholder="e.g. Newton's Laws">
+        </div>
+
+        <label class="lbl" for="smLink">Google Drive link</label>
+        <input class="inp" id="smLink" type="url" placeholder="https://drive.google.com/...">
+
+        <button class="btn" id="smBtn" type="button">Submit note</button>
+      </div>
+
+      <!-- Routine -->
+      <div id="smRoutine" hidden>
+        <label class="lbl" for="smRKind">Routine type</label>
+        <select class="inp" id="smRKind">
+          <option value="tuition">Tuition Routine</option>
+          <option value="exam">Exam Routine</option>
+          <option value="board">Board Exam Routine</option>
+        </select>
+
+        <div id="smRGroupWrap">
+          <label class="lbl" for="smRGroup">Category</label>
+          <select class="inp" id="smRGroup"></select>
+        </div>
+
+        <div id="smRGenderWrap" hidden>
+          <label class="lbl" for="smRGender">School</label>
+          <select class="inp" id="smRGender">
+            <option value="boys">Boys</option>
+            <option value="girls">Girls</option>
+          </select>
+        </div>
+
+        <label class="lbl" for="smRDay">Day / Date</label>
+        <input class="inp" id="smRDay" type="text" maxlength="90" placeholder="e.g. Monday or 12 Nov">
+
+        <label class="lbl" for="smRTime">Time</label>
+        <input class="inp" id="smRTime" type="text" maxlength="90" placeholder="e.g. 4:00 PM - 5:00 PM">
+
+        <label class="lbl" for="smRSubject">Subject</label>
+        <input class="inp" id="smRSubject" type="text" maxlength="90" placeholder="e.g. Math">
+
+        <button class="btn" id="smRBtn" type="button">Submit routine</button>
+      </div>
+
+      <!-- PYQ & Papers -->
+      <div id="smPaper" hidden>
+        <label class="lbl" for="smPType">Paper type</label>
+        <select class="inp" id="smPType">
+          <option value="board">Board PYQ</option>
+          <option value="school">School Exam Paper</option>
+          <option value="tuition">Tuition Exam Paper</option>
+        </select>
+
+        <label class="lbl" for="smPSubject">Subject</label>
+        <select class="inp" id="smPSubject"></select>
+
+        <label class="lbl" for="smPTitle">Paper title</label>
+        <input class="inp" id="smPTitle" type="text" maxlength="190" placeholder="e.g. Madhyamik 2025 Mathematics Question Paper">
+
+        <label class="lbl" for="smPMarks">Marks</label>
+        <input class="inp" id="smPMarks" type="number" inputmode="numeric" min="1" placeholder="e.g. 90">
+
+        <label class="lbl" for="smPLink">Paper link (PDF / Google Drive)</label>
+        <input class="inp" id="smPLink" type="url" placeholder="https://drive.google.com/...">
+
+        <button class="btn" id="smPBtn" type="button">Submit paper</button>
+      </div>
+
+      <!-- Question Bank -->
+      <div id="smQb" hidden>
+        <label class="lbl" for="smQType">Type</label>
+        <select class="inp" id="smQType">
+          <option value="model">Model Question Paper</option>
+          <option value="suggestion">Suggestions</option>
+        </select>
+
+        <label class="lbl" for="smQSubject">Subject</label>
+        <select class="inp" id="smQSubject"></select>
+
+        <label class="lbl" for="smQTitle">Title</label>
+        <input class="inp" id="smQTitle" type="text" maxlength="190" placeholder="e.g. Math Model Question Paper 1">
+
+        <label class="lbl" for="smQNo" id="smQNoLbl">Model paper number</label>
+        <input class="inp" id="smQNo" type="number" inputmode="numeric" min="1" placeholder="e.g. 1">
+
+        <label class="lbl" for="smQLink">Link (PDF / Google Drive)</label>
+        <input class="inp" id="smQLink" type="url" placeholder="https://drive.google.com/...">
+
+        <button class="btn" id="smQBtn" type="button">Submit to Question Bank</button>
+      </div>
+
+      <p class="msg" id="smMsg" role="status"></p>
+    </div>
+  </section>
+
+  <!-- Admin Panel (opens only for a logged-in admin account) -->
+  <section class="panel" id="panel" hidden>
+    <div class="panel-in">
+      <div class="panel-head">
+        <h2>Admin Panel</h2>
+        <button class="close-btn" id="closeBtn" type="button">✕</button>
+      </div>
+
+      <div id="dashView">
+        <div class="tabs">
+          <button class="tab on" id="tabUpload" type="button">Upload</button>
+          <button class="tab" id="tabManage" type="button">Manage</button>
+          <button class="tab" id="tabRequests" type="button">Requests</button>
+          <button class="tab" id="tabRecent" type="button">Recent</button>
+          <button class="tab" id="tabRoutine" type="button">Routine</button>
+          <button class="tab" id="tabPapers" type="button">Upload Papers</button>
+          <button class="tab" id="tabQb" type="button">Question Bank</button>
+          <button class="tab" id="tabUsers" type="button">Users</button>
+          <button class="tab" id="tabContact" type="button">Contact</button>
+        </div>
+
+        <!-- Upload note -->
+        <div id="uploadView">
+          <p class="edit-flag" id="editFlag" hidden>✏️ Editing note</p>
+
+          <label class="lbl" for="fSubject">Subject</label>
+          <select class="inp" id="fSubject"></select>
+
+          <label class="lbl" for="fType">Note type</label>
+          <select class="inp" id="fType"></select>
+
+          <div id="chapterFields">
+            <label class="lbl" for="fChName">Chapter name</label>
+            <input class="inp" id="fChName" type="text" placeholder="e.g. Light">
+            <label class="lbl" for="fChNo">Chapter number</label>
+            <input class="inp" id="fChNo" type="number" inputmode="numeric" min="1" placeholder="e.g. 1">
+          </div>
+
+          <div id="topicFields" hidden>
+            <label class="lbl" for="fTopic" id="lblTopic">Topic name</label>
+            <input class="inp" id="fTopic" type="text" placeholder="e.g. Newton's Laws">
+          </div>
+
+          <label class="lbl" for="fLink">Google Drive link</label>
+          <input class="inp" id="fLink" type="url" placeholder="https://drive.google.com/...">
+
+          <button class="btn" id="saveBtn" type="button">Upload Note</button>
+          <button class="btn ghost" id="cancelEdit" type="button" hidden>Cancel edit</button>
+        </div>
+
+        <!-- Manage notes -->
+        <div id="manageView" hidden>
+          <label class="lbl" for="mFilter">Subject filter</label>
+          <select class="inp" id="mFilter"></select>
+          <div id="noteList"></div>
+        </div>
+
+        <!-- Requests -->
+        <div id="requestsView" hidden>
+          <p class="hint" style="margin-top:14px">Submissions from users (notes, routines, papers, question bank). Accepting one publishes it.</p>
+          <div id="reqList"></div>
+        </div>
+
+        <!-- Recent (admin): what was published + new users -->
+        <div id="recentView" hidden>
+          <div class="tabs" id="rcTabs" style="margin-top:14px">
+            <button class="tab on" data-t="upd" type="button">Updates</button>
+            <button class="tab" data-t="usr" type="button">New users</button>
+            <button class="tab" data-t="ref" type="button">Refresh</button>
+          </div>
+          <div id="rcList"></div>
+        </div>
+
+        <!-- Papers (admin) -->
+        <div id="papersView" hidden>
+          <p class="edit-flag" id="ppEditFlag" hidden>✏️ Editing paper</p>
+
+          <label class="lbl" for="ppType">Paper type</label>
+          <select class="inp" id="ppType">
+            <option value="board">Board PYQ</option>
+            <option value="school">School Exam Paper</option>
+            <option value="tuition">Tuition Exam Paper</option>
+          </select>
+
+          <label class="lbl" for="ppSubj">Subject</label>
+          <select class="inp" id="ppSubj"></select>
+
+          <label class="lbl" for="ppTitle">Paper title</label>
+          <input class="inp" id="ppTitle" type="text" placeholder="e.g. Madhyamik 2025 Mathematics Question Paper">
+
+          <label class="lbl" for="ppMarks">Marks</label>
+          <input class="inp" id="ppMarks" type="number" inputmode="numeric" min="1" placeholder="e.g. 90">
+
+          <label class="lbl" for="ppLink">Paper link (PDF / Google Drive)</label>
+          <input class="inp" id="ppLink" type="url" placeholder="https://drive.google.com/...">
+
+          <button class="btn" id="ppSave" type="button">Upload Paper</button>
+          <button class="btn ghost" id="ppCancel" type="button" hidden>Cancel edit</button>
+
+          <p class="lbl" style="margin-top:24px">Uploaded papers</p>
+          <div id="ppAdminList"></div>
+        </div>
+
+        <!-- Question Bank (admin) -->
+        <div id="qbView" hidden>
+          <p class="edit-flag" id="qbEditFlag" hidden>✏️ Editing item</p>
+
+          <label class="lbl" for="qbType">Type</label>
+          <select class="inp" id="qbType">
+            <option value="model">Model Question Paper</option>
+            <option value="suggestion">Suggestions</option>
+          </select>
+
+          <label class="lbl" for="qbSubj">Subject</label>
+          <select class="inp" id="qbSubj"></select>
+
+          <label class="lbl" for="qbTitle">Title</label>
+          <input class="inp" id="qbTitle" type="text" placeholder="e.g. Math Model Question Paper 1">
+
+          <label class="lbl" for="qbNo" id="qbNoLbl">Model paper number</label>
+          <input class="inp" id="qbNo" type="number" inputmode="numeric" min="1" placeholder="e.g. 1">
+
+          <label class="lbl" for="qbLink">Link (PDF / Google Drive)</label>
+          <input class="inp" id="qbLink" type="url" placeholder="https://drive.google.com/...">
+
+          <button class="btn" id="qbSave" type="button">Upload to Question Bank</button>
+          <button class="btn ghost" id="qbCancel" type="button" hidden>Cancel edit</button>
+
+          <p class="lbl" style="margin-top:24px">Question Bank items</p>
+          <div id="qbAdminList"></div>
+        </div>
+
+        <!-- Users (admin) -->
+        <div id="usersView" hidden>
+          <div id="usList"></div>
+
+          <div id="usDetail" hidden>
+            <button class="btn ghost" id="usBack" type="button">← All users</button>
+            <h3 class="ptitle" id="usName"></h3>
+            <div class="tabs" style="margin-top:10px">
+              <button class="tab on" id="usTabD" type="button">Details</button>
+              <button class="tab" id="usTabN" type="button">Uploads</button>
+              <button class="tab" id="usTabA" type="button">Access</button>
+              <button class="tab" id="usTabX" type="button">Delete</button>
+            </div>
+            <div id="usBody"></div>
+          </div>
+        </div>
+
+        <!-- Contact details (admin) -->
+        <div id="contactView" hidden>
+          <p class="hint" style="margin-top:14px">These details are shown in "Contact Us" for all users.</p>
+
+          <label class="lbl" for="cName">Name</label>
+          <input class="inp" id="cName" type="text" maxlength="100" placeholder="Your name">
+
+          <label class="lbl" for="cLoc">Location</label>
+          <input class="inp" id="cLoc" type="text" maxlength="150" placeholder="e.g. Baharampur, West Bengal">
+
+          <label class="lbl" for="cInsta">Instagram ID</label>
+          <input class="inp" id="cInsta" type="text" maxlength="150" autocapitalize="none" placeholder="@yourid">
+
+          <label class="lbl" for="cMail">Gmail ID</label>
+          <input class="inp" id="cMail" type="email" maxlength="150" autocapitalize="none" placeholder="you@gmail.com">
+
+          <button class="btn" id="cSave" type="button">Save contact details</button>
+        </div>
+
+        <!-- Routine -->
+        <div id="routineView" hidden>
+          <label class="lbl" for="fRKind">Routine type</label>
+          <select class="inp" id="fRKind">
+            <option value="tuition">Tuition Routine</option>
+            <option value="exam">Exam Routine</option>
+            <option value="board">Board Exam Routine</option>
+          </select>
+
+          <div id="rGroupWrap">
+            <label class="lbl" for="fRGroup">Category</label>
+            <select class="inp" id="fRGroup"></select>
+          </div>
+
+          <div id="rGenderWrap" hidden>
+            <label class="lbl" for="fRGender">School</label>
+            <select class="inp" id="fRGender">
+              <option value="boys">Boys</option>
+              <option value="girls">Girls</option>
+            </select>
+          </div>
+
+          <label class="lbl" for="fRDay">Day / Date</label>
+          <input class="inp" id="fRDay" type="text" placeholder="e.g. Monday or 12 Nov">
+
+          <label class="lbl" for="fRTime">Time</label>
+          <input class="inp" id="fRTime" type="text" placeholder="e.g. 4:00 PM - 5:00 PM">
+
+          <label class="lbl" for="fRSubject">Subject</label>
+          <input class="inp" id="fRSubject" type="text" placeholder="e.g. Math">
+
+          <button class="btn" id="saveRoutine" type="button">Add Routine</button>
+
+          <p class="lbl" style="margin-top:24px">Added routines</p>
+          <div id="rAdminList"></div>
+        </div>
+      </div>
+
+      <p class="msg" id="msg" role="status"></p>
+    </div>
+  </section>
+
+  <!-- Login / Register / Guest -->
+  <section class="panel auth" id="authView" hidden>
+    <div class="panel-in">
+      <div class="auth-brand">
+        <h1>EduZone</h1>
+        <p>by Surojit</p>
+      </div>
+
+      <div class="tabs" id="authTabs">
+        <button class="tab on" id="aTabLogin" type="button">Email Login</button>
+        <button class="tab" id="aTabGuest" type="button">Guest</button>
+      </div>
+
+      <!-- Login -->
+      <form id="loginForm" novalidate>
+        <label class="lbl" for="lEmail">Email</label>
+        <input class="inp" id="lEmail" type="email" autocomplete="email" placeholder="you@example.com">
+        <label class="lbl" for="lPass">Password</label>
+        <input class="inp" id="lPass" type="password" autocomplete="current-password" placeholder="Password">
+        <button class="btn" id="lBtn" type="submit">Login</button>
+        <div class="row-r"><button class="lnk" id="toForgot" type="button">Forgot password?</button></div>
+        <p class="alt">Don't have an account? <button class="lnk" id="toReg" type="button">Register</button></p>
+      </form>
+
+      <!-- Register / Guest info -->
+      <form id="pForm" novalidate hidden>
+        <h3 class="ptitle" id="pTitle">Register</h3>
+
+        <div id="credWrap">
+          <label class="lbl" for="pEmail">Email</label>
+          <input class="inp" id="pEmail" type="email" autocomplete="email" placeholder="you@example.com">
+          <label class="lbl" for="pPass">Password</label>
+          <input class="inp" id="pPass" type="password" autocomplete="new-password" placeholder="At least 6 characters">
+        </div>
+
+        <label class="lbl" for="pRole">I am a</label>
+        <select class="inp" id="pRole">
+          <option value="student">Student</option>
+          <option value="teacher">Teacher</option>
+        </select>
+
+        <label class="lbl" for="pName">Full name</label>
+        <input class="inp" id="pName" type="text" autocomplete="name" placeholder="Your full name">
+
+        <div id="stuWrap">
+          <label class="lbl" for="pSchool">School name</label>
+          <input class="inp" id="pSchool" type="text" placeholder="Your school name">
+          <label class="lbl" for="pDob">Date of birth</label>
+          <input class="inp" id="pDob" type="date">
+          <label class="lbl" for="pPhoto">Profile picture (optional)</label>
+          <div class="photo-row">
+            <img class="prev" id="pPrev" alt="" hidden>
+            <input class="inp" id="pPhoto" type="file" accept="image/*">
+          </div>
+        </div>
+
+        <div id="tchWrap" hidden>
+          <label class="lbl" for="pTuition">Which tuition do you teach at?</label>
+          <input class="inp" id="pTuition" type="text" placeholder="Tuition name">
+        </div>
+
+        <button class="btn" id="pBtn" type="submit">Create account</button>
+        <button class="btn ghost" id="pBack" type="button">← Back to login</button>
+      </form>
+
+      <!-- Forgot password -->
+      <form id="fForm" novalidate hidden>
+        <h3 class="ptitle">Forgot your password?</h3>
+        <p class="hint" style="margin-top:6px">Enter your email and we will send you a reset link.</p>
+        <label class="lbl" for="fEmail">Email</label>
+        <input class="inp" id="fEmail" type="email" autocomplete="email" placeholder="you@example.com">
+        <button class="btn" id="fBtn" type="submit">Send reset link</button>
+        <button class="btn ghost" id="fBack" type="button">← Back to login</button>
+      </form>
+
+      <p class="msg" id="aMsg" role="status"></p>
+    </div>
+  </section>
+
+  <!-- In-app confirm dialog (replaces the browser's confirm box) -->
+  <div class="dlg" id="dlg" hidden>
+    <div class="dlg-box" role="alertdialog" aria-modal="true" aria-labelledby="dlgTitle">
+      <h3 id="dlgTitle"></h3>
+      <p id="dlgText"></p>
+      <div class="dlg-btns">
+        <button class="btn ghost" id="dlgNo" type="button">Cancel</button>
+        <button class="btn" id="dlgYes" type="button">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
