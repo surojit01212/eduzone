@@ -12,14 +12,8 @@
   <link rel="preconnect" href="https://www.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
   <script>
-    // Weak phones get the extra-light animation mode (fade only)
+    // Saved dark / light theme
     try {
-      var mem = navigator.deviceMemory || 4;
-      var cores = navigator.hardwareConcurrency || 4;
-      var sd = navigator.connection && navigator.connection.saveData;
-      var pref = null;
-      try { pref = localStorage.getItem("ez_lite"); } catch (e2) { pref = null; }
-      if (pref === "1" || (pref !== "0" && (mem <= 2 || cores <= 4 || sd))) document.documentElement.className += " lite";
       var th = null;
       try { th = localStorage.getItem("ez_theme"); } catch (e3) { th = null; }
       if (th === "dark" || th === "light") document.documentElement.setAttribute("data-theme", th);
@@ -570,7 +564,7 @@
 
         <!-- App update (admin) -->
         <div id="updateView" hidden>
-          <p class="hint" style="margin-top:14px">Build a new APK, upload it, then raise the version here. Apps with a smaller version number will see "Update available". This app's version: <b id="uCur">1</b></p>
+          <p class="hint" style="margin-top:14px">Steps: 1) set APP_VERSION in app.js to the new number and build the new APK, 2) upload the APK to GitHub, 3) enter the same number and the APK link here and save. Every app with a smaller version will show "Update available" when it opens; after updating, it will not ask again. This app's version: <b id="uCur">1</b></p>
 
           <label class="lbl" for="uVer">Latest version number</label>
           <input class="inp" id="uVer" type="number" min="1" step="1" placeholder="e.g. 2">

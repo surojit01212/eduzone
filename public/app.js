@@ -1,7 +1,7 @@
 "use strict";
 
 /* ---------- Firebase config ---------- */
-const firebaseConfig = {
+cconst firebaseConfig = {
   apiKey: "AIzaSyBMnUqhMMXA7Nea5zsn93BuoHcTVmHxYtE",
   authDomain: "eduzone-012-df020.firebaseapp.com",
   projectId: "eduzone-012-df020",
@@ -15,7 +15,7 @@ let lastNetErr = "";
 /* ---------- App version (APK) ----------
    Every time you build a NEW APK, increase this number by 1.
    When Admin > Update has a bigger version, users see "Update available". */
-const APP_VERSION = 1;
+const APP_VERSION = 4;
 const APK_FALLBACK_URL = "https://github.com/surojit01212/eduzone/releases/latest/download/EduZone.apk";
 
 /* ---------- Lazy Firebase loader (timeout + retry) ---------- */
@@ -728,7 +728,10 @@ function syncMe() {
 
   let last = 0;
   try { last = parseInt(localStorage.getItem("ez_sync"), 10) || 0; } catch (e) { last = 0; }
-  if (user.uid && Date.now() - last < 6 * 3600 * 1000) return;
+  let reg = null;
+  try { reg = localStorage.getItem("ez_reg"); } catch (e) { reg = null; }
+  // 6 hour pause only for an account that is already confirmed in the Users list
+  if (user.uid && reg === user.uid && Date.now() - last < 6 * 3600 * 1000) return;
 
   setTimeout(function () {
     if (!user) return;
@@ -911,8 +914,19 @@ $("pForm").addEventListener("submit", function (e) {
     .then(function (cred) {
       p.uid = cred.user.uid;
       const doc = Object.assign({}, p, { email: email, createdAt: Date.now() });
-      return firebase.firestore().collection("users").doc(cred.user.uid).set(doc)
-        .catch(function () { /* profile is kept on the phone anyway */ });
+      const uid = cred.user.uid;
+      return firebase.firestore().collection("users").doc(uid).set(doc)
+        .catch(function () { /* profile is kept on the phone anyway */ })
+        .then(function () {
+          // Public Users list entry is created at once, so the new user is visible to everyone
+          return firebase.firestore().collection("people").doc(uid)
+            .set({ name: String(p.name || "User").slice(0, 80), role: p.role === "teacher" ? "teacher" : "student", ts: Date.now() })
+            .then(function () {
+              try { localStorage.setItem("ez_reg", uid); } catch (e) { /* ignore */ }
+              markSynced();
+            })
+            .catch(function () { /* syncMe will retry on the next open */ });
+        });
     })
     .then(function () {
       p.type = "account";
@@ -943,6 +957,25 @@ $("loginForm").addEventListener("submit", function (e) {
       return firebase.firestore().collection("users").doc(cred.user.uid).get()
         .then(function (d) { return d.exists ? d.data() : null; })
         .catch(function () { return null; });
+    })
+    .then(function (p) {
+      // Make sure this person is in the public Users list (profile / list entry may be missing)
+      try {
+        const fs = firebase.firestore();
+        const nm = String((p && p.name) || email.split("@")[0]).slice(0, 80);
+        const rl = p && p.role === "teacher" ? "teacher" : "student";
+        fs.collection("people").doc(uid).get().then(function (d) {
+          if (d.exists) return null;
+          return fs.collection("people").doc(uid).set({ name: nm, role: rl, ts: Date.now() });
+        }).then(function () {
+          try { localStorage.setItem("ez_reg", uid); } catch (e2) { /* ignore */ }
+        }).catch(function () { /* syncMe will retry */ });
+        if (!p) {
+          fs.collection("users").doc(uid).set({ name: nm, role: rl, email: email, uid: uid, createdAt: Date.now() }, { merge: true })
+            .catch(function () { /* ignore */ });
+        }
+      } catch (e3) { /* ignore */ }
+      return p;
     })
     .then(function (p) {
       const u = p || { role: "student", name: email.split("@")[0] };
@@ -1051,8 +1084,8 @@ function buildMenu() {
   frag.appendChild(item("✉️", "Contact Us", "contact", false));
   frag.appendChild(item("⭐", "Saved", "saved", false));
   frag.appendChild(item("🌙", themeLabel(), "theme", false));
-  frag.appendChild(item("⚡", liteLabel(), "lite", false));
   if (isNative() && pushPlugin()) frag.appendChild(item("🔔", pushLabel(), "push", false));
+  if (isNative()) frag.appendChild(item("🔄", updateLabel(), "update", false));
 
   const sep = document.createElement("div");
   sep.className = "sep";
@@ -1099,8 +1132,8 @@ $("drawerList").addEventListener("click", function (e) {
     return;
   }
   if (go === "theme") { toggleTheme(); b.children[1].textContent = themeLabel(); return; }
-  if (go === "lite") { toggleLite(); b.children[1].textContent = liteLabel(); return; }
   if (go === "push") { togglePush(b); return; }
+  if (go === "update") { closeMenu(); checkUpdate(true); return; }
   if (go === "logout") {
     closeMenu();
     doLogout();
@@ -2119,7 +2152,14 @@ function loadActUsers(force, cb) {
       (r[3] || []).forEach(function (d) { bump(d.uid, "note"); });
       (r[4] || []).forEach(function (d) { bump(d.uid, QB_TYPES[d.type] ? "qb" : "paper"); });
 
-      const arr = r[0].map(function (x) {
+      const base = r[0].slice();
+      // Logged-in person always appears (even if the public list entry is still being created)
+      const me = meUid();
+      if (me && user && !base.some(function (x) { return x.id === me; })) {
+        base.push({ id: me, name: user.name || "User", role: user.role, ts: 0 });
+      }
+
+      const arr = base.map(function (x) {
         const c = cnt[x.id] || { note: 0, paper: 0, qb: 0 };
         return {
           id: x.id,
@@ -2138,9 +2178,51 @@ function loadActUsers(force, cb) {
           a.name.localeCompare(b.name);
       });
       actUsers = { arr: arr, t: Date.now(), counted: !!(r[3] && r[4]) };
-      cb(true);
+      return mergeAccounts(cnt, trusted, admins).then(function () { cb(true); });
     })
     .catch(function () { cb(false); });
+}
+
+// The logged-in person's uid (works even for an old saved login without uid)
+function meUid() {
+  if (user && user.uid) return user.uid;
+  try {
+    const a = window.firebase && firebase.auth && firebase.auth().currentUser;
+    return a && a.uid ? a.uid : "";
+  } catch (e) { return ""; }
+}
+
+// Admin only: accounts that registered but never reached the public list are added here,
+// and their public list entry is created so every user sees them from now on.
+function mergeAccounts(cnt, trusted, admins) {
+  if (!isAdmin || !actUsers) return Promise.resolve();
+  return loadFirebase()
+    .then(function (db) {
+      return withTimeout(db.collection("users").limit(500).get(), 12000).then(function (snap) {
+        const have = {};
+        actUsers.arr.forEach(function (x) { have[x.id] = true; });
+        snap.forEach(function (d) {
+          if (have[d.id]) return;
+          const x = d.data() || {};
+          const c = cnt[d.id] || { note: 0, paper: 0, qb: 0 };
+          const nm = String(x.name || "User").slice(0, 80);
+          const rl = x.role === "teacher" ? "teacher" : "student";
+          const ts = Number(x.createdAt) || 0;
+          actUsers.arr.push({
+            id: d.id, uid: d.id, name: nm, role: rl, ts: ts,
+            trusted: !!trusted[d.id], admin: !!admins[d.id],
+            c: c, total: c.note + c.paper + c.qb
+          });
+          db.collection("people").doc(d.id).set({ name: nm, role: rl, ts: ts || Date.now() })
+            .catch(function () { /* rules may not allow it: the admin still sees the user */ });
+        });
+        actUsers.arr.sort(function (a, b) {
+          return (b.total - a.total) || (b.admin - a.admin) || (b.trusted - a.trusted) ||
+            a.name.localeCompare(b.name);
+        });
+      });
+    })
+    .catch(function () { /* ignore: the normal list is still shown */ });
 }
 
 // Upload count chips for one person (used in the Users page and the admin Users tab)
@@ -2196,7 +2278,7 @@ function renderActUsers() {
     const t = document.createElement("div");
     t.className = "t";
     t.appendChild(document.createTextNode(g.name));
-    if (user && user.uid && g.uid === user.uid) {
+    if (g.uid && g.uid === meUid()) {
       const me = document.createElement("span");
       me.className = "badge you";
       me.textContent = "You";
@@ -4560,35 +4642,71 @@ function renderNotices(items) {
   noticeBox.innerHTML = "";
   if (!show.length) { noticeBox.hidden = true; return; }
 
-  const frag = document.createDocumentFragment();
+  const board = document.createElement("div");
+  board.className = "nboard";
+
+  const head = document.createElement("div");
+  head.className = "nboard-head";
+  const hi = document.createElement("span");
+  hi.className = "nh-ic";
+  hi.textContent = "📢";
+  const ht = document.createElement("span");
+  ht.className = "nh-t";
+  ht.textContent = "Notice Board";
+  const hc = document.createElement("span");
+  hc.className = "nh-c";
+  hc.textContent = String(show.length);
+  head.appendChild(hi);
+  head.appendChild(ht);
+  head.appendChild(hc);
+  board.appendChild(head);
+
   show.forEach(function (n) {
-    const d = document.createElement("div");
-    d.className = "notice";
-    const ic = document.createElement("span");
-    ic.className = "ni";
-    ic.textContent = "📢";
+    const row = document.createElement("div");
+    row.className = "nitem";
+
+    const dot = document.createElement("span");
+    dot.className = "ndot";
+
     const body = document.createElement("div");
-    body.className = "nb";
+    body.className = "nbody";
+
+    const meta = document.createElement("div");
+    meta.className = "nmeta";
+    if (n.ts) {
+      const dt = document.createElement("span");
+      dt.className = "ndate";
+      dt.textContent = fmtShort(n.ts);
+      meta.appendChild(dt);
+      if (now - n.ts < 2 * 86400000) {
+        const nw = document.createElement("span");
+        nw.className = "nnew";
+        nw.textContent = "NEW";
+        meta.appendChild(nw);
+      }
+    }
+
     const tx = document.createElement("div");
-    tx.className = "ntx";
+    tx.className = "ntext";
     tx.textContent = n.text;
-    const dt = document.createElement("div");
-    dt.className = "nd";
-    dt.textContent = fmtShort(n.ts);
+
+    if (meta.childNodes.length) body.appendChild(meta);
     body.appendChild(tx);
-    if (n.ts) body.appendChild(dt);
+
     const x = document.createElement("button");
     x.type = "button";
     x.className = "nclose";
     x.dataset.id = n.id;
-    x.setAttribute("aria-label", "Dismiss");
+    x.setAttribute("aria-label", "Dismiss notice");
     x.textContent = "✕";
-    d.appendChild(ic);
-    d.appendChild(body);
-    d.appendChild(x);
-    frag.appendChild(d);
+
+    row.appendChild(dot);
+    row.appendChild(body);
+    row.appendChild(x);
+    board.appendChild(row);
   });
-  noticeBox.appendChild(frag);
+
+  noticeBox.appendChild(board);
   noticeBox.hidden = false;
 }
 
@@ -4784,7 +4902,7 @@ function leftText(n) {
   return n + " days left";
 }
 
-/* ---------- Dark mode and Smooth mode (menu) ---------- */
+/* ---------- Dark mode (menu) ---------- */
 function isDarkNow() {
   const t = document.documentElement.getAttribute("data-theme");
   if (t === "dark") return true;
@@ -4804,17 +4922,6 @@ function toggleTheme() {
   if (m) m.setAttribute("content", next === "dark" ? "#1a2030" : "#4f46e5");
 }
 
-function liteLabel() {
-  return "Smooth mode: " + (document.documentElement.classList.contains("lite") ? "On" : "Off");
-}
-
-// Smooth mode = fade-only animations (best for slow phones)
-function toggleLite() {
-  const on = !document.documentElement.classList.contains("lite");
-  document.documentElement.classList.toggle("lite", on);
-  try { localStorage.setItem("ez_lite", on ? "1" : "0"); } catch (e) { /* ignore */ }
-}
-
 /* ---------- Part 4: "Update available" alert (APK only) ---------- */
 function isNative() {
   try { return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); }
@@ -4822,15 +4929,43 @@ function isNative() {
 }
 
 let updateShowing = false;
-function checkUpdate() {
-  if (!isNative() || updateShowing || navigator.onLine === false) return;
+
+// Latest version the admin published (remembered, so the menu can show the status offline)
+function latestKnown() {
+  try { return parseInt(localStorage.getItem("ez_latest_ver"), 10) || 0; } catch (e) { return 0; }
+}
+
+function updateLabel() {
+  return "Version " + APP_VERSION + (latestKnown() > APP_VERSION ? " · Update available" : " · Up to date ✓");
+}
+
+function refreshUpdateLabel() {
+  const b = document.querySelector('#drawerList button[data-go="update"]');
+  if (b && b.children[1]) b.children[1].textContent = updateLabel();
+}
+
+// manual = true when the person taps "Version ..." in the menu (shows a result even if nothing is new)
+function checkUpdate(manual) {
+  manual = manual === true;
+  if (!isNative() || updateShowing) return;
+  if (navigator.onLine === false) {
+    if (manual) toast("No internet connection", false, "err");
+    return;
+  }
   readDoc("settings", "app")
     .then(function (d) {
-      if (!d) return;
-      const ver = Number(d.version);
-      if (!ver || ver <= APP_VERSION) return;
+      const ver = d ? Number(d.version) : 0;
+      if (ver) { try { localStorage.setItem("ez_latest_ver", String(ver)); } catch (e) { /* ignore */ } }
+      refreshUpdateLabel();
+
+      if (!d || !ver || ver <= APP_VERSION) {
+        // This app is already on the newest version: forget any old "Later" for it
+        try { localStorage.removeItem("ez_upd_skip"); } catch (e) { /* ignore */ }
+        if (manual) toast("You are on the latest version (" + APP_VERSION + ") ✓", false, "ok");
+        return;
+      }
       const force = d.force === true;
-      if (!force) {
+      if (!force && !manual) {
         try {
           const s = JSON.parse(localStorage.getItem("ez_upd_skip") || "null");
           if (s && s.v === ver && Date.now() - s.t < 86400000) return;
@@ -4838,7 +4973,9 @@ function checkUpdate() {
       }
       showUpdateDialog(d, ver, force);
     })
-    .catch(function () { /* ignore: no internet or no settings doc yet */ });
+    .catch(function () {
+      if (manual) toast("Could not check for updates. Try again.", false, "err");
+    });
 }
 
 function showUpdateDialog(d, ver, force) {
@@ -4847,7 +4984,8 @@ function showUpdateDialog(d, ver, force) {
   const oldNo = no.textContent;
   no.textContent = "Later";
   no.hidden = force;
-  askConfirm("Update available 🚀", d.note || "A new version of EduZone is ready. Please update.", "Install")
+  const msg = "Version " + ver + " is ready. " + (d.note || "Please update to get the latest features.");
+  askConfirm("Update available 🚀", msg, "Update")
     .then(function (ok) {
       no.textContent = oldNo;
       no.hidden = false;
@@ -4860,6 +4998,18 @@ function showUpdateDialog(d, ver, force) {
       if (force) { showUpdateDialog(d, ver, force); return; }
       try { localStorage.setItem("ez_upd_skip", JSON.stringify({ v: ver, t: Date.now() })); } catch (e) { /* ignore */ }
     });
+}
+
+// First start after an APK update: tell the person that the update worked
+function announceUpdated() {
+  if (!isNative()) return;
+  let last = 0;
+  try { last = parseInt(localStorage.getItem("ez_last_ver"), 10) || 0; } catch (e) { last = 0; }
+  if (last && APP_VERSION > last) {
+    try { localStorage.removeItem("ez_upd_skip"); } catch (e) { /* ignore */ }
+    toast("EduZone updated to version " + APP_VERSION + " ✓", false, "ok");
+  }
+  try { localStorage.setItem("ez_last_ver", String(APP_VERSION)); } catch (e) { /* ignore */ }
 }
 
 /* ---------- Part 5: Push notifications (APK only) ---------- */
@@ -4917,6 +5067,7 @@ function togglePush(btn) {
 
 loadNotices();
 setupPushListeners();
+setTimeout(announceUpdated, 1200);
 setTimeout(checkUpdate, 2500);
 
 /* ---------- Start ---------- */

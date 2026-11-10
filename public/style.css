@@ -1028,59 +1028,28 @@ details.guide summary {
 .toast.ok { background: rgba(22, 120, 60, 0.96); }
 .toast.err { background: rgba(185, 28, 28, 0.96); }
 
-/* ---------- Animations (low-end phone friendly) ----------
-   Rules used here, so even weak phones stay smooth:
-   1. Only `transform` and `opacity` are animated. These run on the GPU
-      compositor and never force a re-layout or re-paint of the page.
-   2. No blur, no shadow, no filter, no width/height/top/left animation.
-   3. Everything is short (120-220 ms). Closing is instant, so taps feel fast.
-   4. No permanent will-change: the phone only makes a GPU layer while the
-      animation runs, so memory stays low.
-   5. Weak phones (html.lite) get a plain fade only. */
-
+/* ---------- Animation (one single, very light fade) ----------
+   Only `opacity` is animated, for 0.14 s. Opacity runs on the GPU and never forces
+   a re-layout, so it stays smooth even on weak phones. Closing is instant.
+   Used for: pages, side menu, confirm box and notification. */
 @keyframes ez-fade { from { opacity: 0; } to { opacity: 1; } }
 
-@keyframes ez-up {
-  from { opacity: 0; transform: translate3d(0, 18px, 0); }
-  to   { opacity: 1; transform: translate3d(0, 0, 0); }
-}
-
-@keyframes ez-page {
-  from { opacity: 0; transform: translate3d(0, 8px, 0); }
-  to   { opacity: 1; transform: translate3d(0, 0, 0); }
-}
-
-@keyframes ez-drawer {
-  from { transform: translate3d(-100%, 0, 0); }
-  to   { transform: translate3d(0, 0, 0); }
-}
-
-@keyframes ez-toast {
-  from { opacity: 0; transform: translate3d(-50%, 8px, 0); }
-  to   { opacity: 1; transform: translate3d(-50%, 0, 0); }
-}
-
-@keyframes ez-toastf {
-  from { opacity: 0; transform: translateX(-50%); }
-  to   { opacity: 1; transform: translateX(-50%); }
-}
-
-/* Pages (subject, routine, papers, profile, submit, users, contact, admin) */
-.panel:not([hidden]) {
-  animation: ez-page 0.15s ease-out;
+.panel:not([hidden]),
+.drawer.open,
+.dlg:not([hidden]),
+.toast:not([hidden]) {
+  animation: ez-fade 0.14s ease-out;
 }
 
 /* The login screen appears at app start: no animation there */
 .panel.auth:not([hidden]) { animation: none; }
 
-/* Side menu: slides in, dark background fades in */
-.overlay.open { animation: ez-fade 0.18s linear; }
-.drawer.open { animation: ez-drawer 0.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
-
-/* Confirm box and notification */
-.dlg:not([hidden]) { animation: ez-fade 0.12s linear; }
-.dlg:not([hidden]) .dlg-box { animation: ez-up 0.16s ease-out; }
-.toast:not([hidden]) { animation: ez-toast 0.18s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .panel:not([hidden]),
+  .drawer.open,
+  .dlg:not([hidden]),
+  .toast:not([hidden]) { animation: none; }
+}
 
 /* Tap feedback: opacity only (no transform, so the phone never builds extra layers while you scroll and tap) */
 .card:active, .btn:active, .tbtn:active, .menu-btn:active,
@@ -1094,30 +1063,6 @@ details.guide summary {
 .nrow, .note, .crow {
   content-visibility: auto;
   contain-intrinsic-size: auto 60px;
-}
-
-/* Weak phones: fade only, no sliding, even shorter */
-html.lite .panel:not([hidden]) { animation: ez-fade 0.12s linear; }
-html.lite .panel.auth:not([hidden]) { animation: none; }
-html.lite .drawer.open { animation: ez-fade 0.12s linear; }
-html.lite .overlay.open { animation: none; }
-html.lite .dlg:not([hidden]) .dlg-box { animation: none; }
-html.lite .toast:not([hidden]) { animation: ez-toastf 0.12s linear; }
-html.lite .card, html.lite .btn, html.lite .tbtn, html.lite .menu-btn,
-html.lite .close-btn, html.lite .nlink, html.lite .crow {
-  transition: none;
-}
-html.lite .card:active, html.lite .btn:active, html.lite .tbtn:active,
-html.lite .menu-btn:active, html.lite .close-btn:active,
-html.lite .nlink:active, html.lite .crow:active {
-  transform: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation: none !important;
-    transition: none !important;
-  }
 }
 
 /* ---------- Users: upload blocks ---------- */
@@ -1214,14 +1159,12 @@ button, a, select, input { touch-action: pan-x pan-y; }
   pointer-events: none;
 }
 
-html.lite #reloadBtn.spin, html.lite #actRefresh.spin { animation-duration: 1s; }
-
 /* The reload spin is tiny and important feedback, so it also runs when the system asks for reduced motion */
 @media (prefers-reduced-motion: reduce) {
   #reloadBtn.spin, #actRefresh.spin { animation: ez-spin 1s linear infinite !important; }
 }
 
-/* ---------- Install + small reload button group (home header) ---------- */
+/* ---------- Small reload button group (home header) ---------- */
 .tgrp {
   flex-shrink: 0;
   display: inline-flex;
@@ -1393,4 +1336,151 @@ textarea.inp { resize: vertical; min-height: 76px; }
 
 @media (max-width: 380px) {
   .nbtn { width: 30px; height: 30px; font-size: 15px; }
+}
+
+/* ---------- Home notice cards (professional look) ---------- */
+.notices { gap: 10px; margin-bottom: 12px; }
+
+.notice {
+  position: relative;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 6px 12px 12px;
+  background: linear-gradient(135deg, #eef2ff 0%, #f8f9ff 100%);
+  border: 1px solid #dfe3fb;
+  border-left: 4px solid var(--brand);
+  border-radius: 14px;
+  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.08);
+}
+.notice .ni {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  font-size: 18px;
+  line-height: 1;
+  background: var(--brand);
+  border-radius: 12px;
+  filter: none;
+}
+.notice .nhead { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+.notice .ntag {
+  padding: 2px 8px;
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.8px;
+  color: var(--brand);
+  background: rgba(79, 70, 229, 0.12);
+  border-radius: 20px;
+}
+.notice .nd { margin-top: 0; font-size: 11px; font-weight: 600; color: var(--muted); }
+.notice .ntx { font-size: 14px; font-weight: 600; line-height: 1.45; color: var(--text); }
+.notice .nclose {
+  align-self: flex-start;
+  width: 30px;
+  height: 30px;
+  font-size: 12px;
+  border-radius: 50%;
+}
+.notice .nclose:active { background: rgba(0, 0, 0, 0.06); }
+
+:root[data-theme="dark"] .notice {
+  background: linear-gradient(135deg, #1d2342 0%, #1a2030 100%);
+  border-color: #2f3a6b;
+  box-shadow: none;
+}
+:root[data-theme="dark"] .notice .ni { background: #4f46e5; }
+:root[data-theme="dark"] .notice .ntag { color: #c7d2fe; background: rgba(129, 140, 248, 0.2); }
+:root[data-theme="dark"] .notice .nclose:active { background: rgba(255, 255, 255, 0.08); }
+
+/* ---------- Users page: clear "You" highlight ---------- */
+.badge.you { color: #fff; background: #16a34a; }
+.note.me {
+  background: #eef2ff;
+  border: 2px solid var(--brand);
+  box-shadow: 0 2px 10px rgba(79, 70, 229, 0.15);
+}
+:root[data-theme="dark"] .note.me { background: #1d2342; box-shadow: none; }
+
+/* ---------- Home Notice Board (professional card) ---------- */
+.nboard {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 2px 10px rgba(79, 70, 229, 0.07);
+}
+.nboard-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 14px;
+  background: linear-gradient(135deg, var(--brand) 0%, #6d63f3 100%);
+  color: #fff;
+}
+.nboard-head .nh-ic { font-size: 16px; line-height: 1; }
+.nboard-head .nh-t { flex: 1; font-size: 13.5px; font-weight: 700; letter-spacing: 0.3px; }
+.nboard-head .nh-c {
+  min-width: 22px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--brand);
+  background: #fff;
+  border-radius: 20px;
+}
+.nitem {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 8px 12px 14px;
+  border-top: 1px solid var(--border);
+}
+.nboard-head + .nitem { border-top: 0; }
+.nitem .ndot {
+  flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  margin-top: 6px;
+  background: var(--brand);
+  border-radius: 50%;
+}
+.nitem .nbody { flex: 1; min-width: 0; }
+.nitem .nmeta { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+.nitem .ndate { font-size: 11px; font-weight: 600; color: var(--muted); }
+.nitem .nnew {
+  padding: 1px 7px;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  color: #fff;
+  background: #16a34a;
+  border-radius: 20px;
+}
+.nitem .ntext { font-size: 14px; font-weight: 500; line-height: 1.5; color: var(--text); word-break: break-word; }
+.nitem .nclose {
+  flex-shrink: 0;
+  width: 30px;
+  height: 30px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.nitem .nclose:active { background: rgba(0, 0, 0, 0.07); }
+:root[data-theme="dark"] .nboard { box-shadow: none; }
+:root[data-theme="dark"] .nboard-head { background: linear-gradient(135deg, #4338ca 0%, #5b50e0 100%); }
+:root[data-theme="dark"] .nitem .nclose:active { background: rgba(255, 255, 255, 0.1); }
+
+/* ---------- Users page: stronger "You" highlight ---------- */
+.note.me {
+  border: 2px solid var(--brand);
+  background: linear-gradient(135deg, rgba(79, 70, 229, 0.09) 0%, rgba(79, 70, 229, 0.02) 100%);
 }

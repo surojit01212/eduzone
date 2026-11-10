@@ -1,7 +1,7 @@
 "use strict";
 
 // App update korle shudhu ei version number ta barao (v12 -> v13)
-const CACHE = "eduzone-v35";
+const CACHE = "eduzone-v40";
 const SHELL = ["./", "index.html", "style.css", "app.js", "manifest.json", "icon-192.png", "icon-512.png"];
 
 self.addEventListener("install", function (e) {
