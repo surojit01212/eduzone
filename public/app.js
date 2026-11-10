@@ -1,7 +1,7 @@
 "use strict";
 
 /* ---------- Firebase config ---------- */
-cconst firebaseConfig = {
+const firebaseConfig = {
   apiKey: "AIzaSyBMnUqhMMXA7Nea5zsn93BuoHcTVmHxYtE",
   authDomain: "eduzone-012-df020.firebaseapp.com",
   projectId: "eduzone-012-df020",
@@ -15,7 +15,7 @@ let lastNetErr = "";
 /* ---------- App version (APK) ----------
    Every time you build a NEW APK, increase this number by 1.
    When Admin > Update has a bigger version, users see "Update available". */
-const APP_VERSION = 4;
+const APP_VERSION = 5;
 const APK_FALLBACK_URL = "https://github.com/surojit01212/eduzone/releases/latest/download/EduZone.apk";
 
 /* ---------- Lazy Firebase loader (timeout + retry) ---------- */
