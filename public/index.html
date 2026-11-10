@@ -182,6 +182,11 @@
         </div>
       </div>
 
+      <div id="mySubWrap" hidden>
+        <h3 class="ptitle">My submissions &amp; uploads</h3>
+        <div id="mySubList"></div>
+      </div>
+
       <h3 class="ptitle">Personal details</h3>
       <label class="lbl" for="epName">Full name</label>
       <input class="inp" id="epName" type="text" autocomplete="name" placeholder="Your full name">
@@ -291,6 +296,9 @@
         <label class="lbl" for="smLink">Google Drive link</label>
         <input class="inp" id="smLink" type="url" placeholder="https://drive.google.com/...">
 
+        <label class="lbl" for="smDesc">Description (optional)</label>
+        <textarea class="inp" id="smDesc" rows="3" maxlength="300" placeholder="Write a short description (optional)"></textarea>
+
         <button class="btn" id="smBtn" type="button">Submit note</button>
       </div>
 
@@ -325,6 +333,16 @@
         <label class="lbl" for="smRSubject">Subject</label>
         <input class="inp" id="smRSubject" type="text" maxlength="90" placeholder="e.g. Math">
 
+        <div id="smRChWrap" hidden>
+          <label class="lbl" for="smRChName">Chapter name (optional)</label>
+          <input class="inp" id="smRChName" type="text" maxlength="140" placeholder="e.g. Light">
+          <label class="lbl" for="smRChNo">Chapter number (optional)</label>
+          <input class="inp" id="smRChNo" type="text" maxlength="40" placeholder="e.g. 1 or 1-3">
+        </div>
+
+        <label class="lbl" for="smRDesc">Description (optional)</label>
+        <textarea class="inp" id="smRDesc" rows="3" maxlength="300" placeholder="Write a short description (optional)"></textarea>
+
         <button class="btn" id="smRBtn" type="button">Submit routine</button>
       </div>
 
@@ -349,6 +367,9 @@
         <label class="lbl" for="smPLink">Paper link (PDF / Google Drive)</label>
         <input class="inp" id="smPLink" type="url" placeholder="https://drive.google.com/...">
 
+        <label class="lbl" for="smPDesc">Description (optional)</label>
+        <textarea class="inp" id="smPDesc" rows="3" maxlength="300" placeholder="Write a short description (optional)"></textarea>
+
         <button class="btn" id="smPBtn" type="button">Submit paper</button>
       </div>
 
@@ -371,6 +392,9 @@
 
         <label class="lbl" for="smQLink">Link (PDF / Google Drive)</label>
         <input class="inp" id="smQLink" type="url" placeholder="https://drive.google.com/...">
+
+        <label class="lbl" for="smQDesc">Description (optional)</label>
+        <textarea class="inp" id="smQDesc" rows="3" maxlength="300" placeholder="Write a short description (optional)"></textarea>
 
         <button class="btn" id="smQBtn" type="button">Submit to Question Bank</button>
       </div>
@@ -427,6 +451,9 @@
           <label class="lbl" for="fLink">Google Drive link</label>
           <input class="inp" id="fLink" type="url" placeholder="https://drive.google.com/...">
 
+          <label class="lbl" for="fDesc">Description (optional)</label>
+          <textarea class="inp" id="fDesc" rows="3" maxlength="300" placeholder="Write a short description (optional)"></textarea>
+
           <button class="btn" id="saveBtn" type="button">Upload Note</button>
           <button class="btn ghost" id="cancelEdit" type="button" hidden>Cancel edit</button>
         </div>
@@ -477,6 +504,9 @@
           <label class="lbl" for="ppLink">Paper link (PDF / Google Drive)</label>
           <input class="inp" id="ppLink" type="url" placeholder="https://drive.google.com/...">
 
+          <label class="lbl" for="ppDesc">Description (optional)</label>
+          <textarea class="inp" id="ppDesc" rows="3" maxlength="300" placeholder="Write a short description (optional)"></textarea>
+
           <button class="btn" id="ppSave" type="button">Upload Paper</button>
           <button class="btn ghost" id="ppCancel" type="button" hidden>Cancel edit</button>
 
@@ -505,6 +535,9 @@
 
           <label class="lbl" for="qbLink">Link (PDF / Google Drive)</label>
           <input class="inp" id="qbLink" type="url" placeholder="https://drive.google.com/...">
+
+          <label class="lbl" for="qbDesc">Description (optional)</label>
+          <textarea class="inp" id="qbDesc" rows="3" maxlength="300" placeholder="Write a short description (optional)"></textarea>
 
           <button class="btn" id="qbSave" type="button">Upload to Question Bank</button>
           <button class="btn ghost" id="qbCancel" type="button" hidden>Cancel edit</button>
@@ -611,6 +644,16 @@
           <label class="lbl" for="fRSubject">Subject</label>
           <input class="inp" id="fRSubject" type="text" placeholder="e.g. Math">
 
+          <div id="rChWrap" hidden>
+            <label class="lbl" for="fRChName">Chapter name (optional)</label>
+            <input class="inp" id="fRChName" type="text" maxlength="140" placeholder="e.g. Light">
+            <label class="lbl" for="fRChNo">Chapter number (optional)</label>
+            <input class="inp" id="fRChNo" type="text" maxlength="40" placeholder="e.g. 1 or 1-3">
+          </div>
+
+          <label class="lbl" for="fRDesc">Description (optional)</label>
+          <textarea class="inp" id="fRDesc" rows="3" maxlength="300" placeholder="Write a short description (optional)"></textarea>
+
           <button class="btn" id="saveRoutine" type="button">Add Routine</button>
 
           <p class="lbl" style="margin-top:24px">Added routines</p>
@@ -679,7 +722,7 @@
         </div>
 
         <button class="btn" id="pBtn" type="submit">Create account</button>
-        <button class="btn ghost" id="pBack" type="button">← Back to login</button>
+        <p class="alt">Already have an account? <button class="lnk" id="pBack" type="button">Login</button></p>
       </form>
 
       <!-- Forgot password -->

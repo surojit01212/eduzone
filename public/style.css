@@ -936,6 +936,19 @@ input[type="file"].inp { padding: 8px; font-size: 13px; }
   text-align: center;
   color: var(--muted);
 }
+/* ---------- Optional description under an item ---------- */
+.ndesc {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  color: var(--muted);
+  white-space: pre-line;
+  word-break: break-word;
+}
+.ndesc.nch { font-weight: 700; }
+
 /* ---------- Contributor line ("Contributed by ...") ---------- */
 .nby {
   display: block;
@@ -1182,6 +1195,12 @@ button, a, select, input { touch-action: pan-x pan-y; }
   line-height: 1;
   border-radius: 9px;
 }
+
+/* Install (APK) icon button: same size as the reload button */
+#installBtn { display: inline-grid; place-items: center; }
+#installBtn[hidden] { display: none; }
+#installBtn svg { display: block; }
+#installBtn.busy { opacity: 0.55; pointer-events: none; }
 
 #reloadBtn.spin {
   will-change: transform;
@@ -1484,3 +1503,20 @@ textarea.inp { resize: vertical; min-height: 76px; }
   border: 2px solid var(--brand);
   background: linear-gradient(135deg, rgba(79, 70, 229, 0.09) 0%, rgba(79, 70, 229, 0.02) 100%);
 }
+
+/* ---------- Profile: submission status ---------- */
+.sst {
+  display: inline-block;
+  margin-top: 5px;
+  padding: 2px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 20px;
+}
+.sst.pending { color: #92400e; background: #fef3c7; }
+.sst.approved { color: #166534; background: #dcfce7; }
+.sst.rejected { color: #991b1b; background: #fee2e2; }
+:root[data-theme="dark"] .sst.pending { color: #fcd34d; background: #4a3a15; }
+:root[data-theme="dark"] .sst.approved { color: #86efac; background: #14391f; }
+:root[data-theme="dark"] .sst.rejected { color: #fca5a5; background: #4a1d1d; }
+#mySubList .nlink { margin-top: 8px; }

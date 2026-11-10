@@ -2,12 +2,12 @@
 
 /* ---------- Firebase config ---------- */
 const firebaseConfig = {
-  apiKey: "AIzaSyBMnUqhMMXA7Nea5zsn93BuoHcTVmHxYtE",
-  authDomain: "eduzone-012-df020.firebaseapp.com",
-  projectId: "eduzone-012-df020",
-  storageBucket: "eduzone-012-df020.firebasestorage.app",
-  messagingSenderId: "619428019916",
-  appId: "1:619428019916:web:c9eb610c21e234e16acc69"
+  apiKey: "AIzaSyD5_EaUEy8n7pDjLrs6GzYBPq9TTXx_Erg",
+  authDomain: "eduzone-s012.firebaseapp.com",
+  projectId: "eduzone-s012",
+  storageBucket: "eduzone-s012.firebasestorage.app",
+  messagingSenderId: "42118624568",
+  appId: "1:42118624568:web:111f8f21e75eef1a0d7dcd"
 };
 
 let lastNetErr = "";
@@ -15,7 +15,7 @@ let lastNetErr = "";
 /* ---------- App version (APK) ----------
    Every time you build a NEW APK, increase this number by 1.
    When Admin > Update has a bigger version, users see "Update available". */
-const APP_VERSION = 5;
+const APP_VERSION = 6;
 const APK_FALLBACK_URL = "https://github.com/surojit01212/eduzone/releases/latest/download/EduZone.apk";
 
 /* ---------- Lazy Firebase loader (timeout + retry) ---------- */
@@ -527,6 +527,23 @@ function byLine(name) {
   return s;
 }
 
+// Small muted line: optional description (or chapter) written by the contributor
+function descLine(text, extra) {
+  if (!text || typeof text !== "string") return null;
+  const s = document.createElement("span");
+  s.className = "ndesc" + (extra ? " " + extra : "");
+  s.textContent = text;
+  return s;
+}
+
+// "Chapter 3: Light" for an exam routine row (both parts optional)
+function routineChapter(r) {
+  const no = r && r.chapterNo ? String(r.chapterNo) : "";
+  const nm = r && typeof r.chapterName === "string" ? r.chapterName : "";
+  if (!no && !nm) return "";
+  return (no ? "Chapter " + no : "Chapter") + (nm ? ": " + nm : "");
+}
+
 /* ---------- Copy / select protection (fields stay usable) ---------- */
 function isField(t) {
   return !!(t && t.closest && t.closest("input, textarea, select"));
@@ -775,7 +792,7 @@ function setAuthMode(m) {
 
 function showAuth() {
   authView.hidden = false;
-  setAuthMode("login");
+  setAuthMode("register");
   syncScroll();
 }
 
@@ -790,8 +807,10 @@ function enterApp() {
 function authError(err, el) {
   const c = (err && err.code) || "";
   let m = "Something went wrong. Please try again.";
-  if (c === "auth/invalid-api-key" || c === "auth/api-key-not-valid.-please-pass-a-valid-api-key.") {
-    m = "Wrong Firebase API key in app.js.";
+  const raw = String((err && err.message) || "");
+  if (c === "auth/invalid-api-key" || c === "auth/api-key-not-valid.-please-pass-a-valid-api-key." ||
+      /api[ _-]?key/i.test(raw) || firebaseConfig.apiKey === "api") {
+    m = "Wrong Firebase API key in app.js (line 5). Paste the real apiKey from Firebase Console > Project settings.";
   } else if (c === "auth/unauthorized-domain") {
     m = "Add this website in Firebase Authentication > Settings > Authorized domains.";
   } else if (!c || c === "auth/network-request-failed") {
@@ -811,6 +830,11 @@ function authError(err, el) {
     m = "Please log out and log in again, then try.";
   } else if (c === "auth/operation-not-allowed") {
     m = "Enable Email/Password sign-in in Firebase Authentication.";
+  } else if (c === "auth/configuration-not-found") {
+    m = "Firebase Authentication is not set up. Open Firebase Console > Authentication > click Get started, then enable Email/Password.";
+  } else {
+    try { console.error("Auth error:", c, raw); } catch (e9) { /* ignore */ }
+    m = "Something went wrong (" + (c || "unknown") + "). Please try again.";
   }
   setMsg(el && el.nodeType === 1 ? el : aMsg, m, "err");
 }
@@ -1252,7 +1276,8 @@ function loadSubject(id) {
           chapterName: n.chapterName,
           topicName: n.topicName,
           createdAt: n.createdAt || 0,
-          by: typeof n.by === "string" ? n.by : ""
+          by: typeof n.by === "string" ? n.by : "",
+          desc: typeof n.desc === "string" ? n.desc : ""
         };
       });
       subCache[id] = arr;
@@ -1290,7 +1315,8 @@ function renderSubject() {
       ssub: subjectName(n.subject) + " • " + (n.type === "chapter" ? "Chapter" : n.type === "grammar" ? "Grammar" : "Topic"),
       link: n.link,
       ts: n.createdAt,
-      by: n.by
+      by: n.by,
+      desc: n.desc
     });
   });
 }
@@ -1336,10 +1362,129 @@ function openProfile() {
   $("epCur").value = "";
   $("epNew").value = "";
   setMsg(epMsg, "");
+  loadMySubs();
 
   profView.hidden = false;
   profView.scrollTop = 0;
   syncScroll();
+}
+
+/* ---------- My submissions in profile (Pending / Approved / Rejected) ---------- */
+const mySubWrap = $("mySubWrap");
+const mySubList = $("mySubList");
+let mySubTok = 0;
+const MY_ST = {
+  pending: ["⏳ Pending", "pending"],
+  accepted: ["✅ Approved", "approved"],
+  rejected: ["❌ Rejected", "rejected"]
+};
+
+function mySubRow(x) {
+  const el = document.createElement(x.link ? "a" : "div");
+  el.className = "nlink" + (x.link ? "" : " static");
+  if (x.link) {
+    el.href = x.link;
+    el.target = "_blank";
+    el.rel = "noopener noreferrer";
+  }
+
+  const box = document.createElement("div");
+  const t = document.createElement("span");
+  t.className = "nt";
+  t.textContent = x.title;
+  const s2 = document.createElement("span");
+  s2.className = "ns";
+  s2.textContent = x.sub + (x.ms ? " • " + fmtFull(x.ms) : "");
+  const st = document.createElement("span");
+  st.className = "sst " + MY_ST[x.st][1];
+  st.textContent = MY_ST[x.st][0];
+  box.appendChild(t);
+  box.appendChild(s2);
+  box.appendChild(st);
+  el.appendChild(box);
+
+  if (x.link) {
+    const g = document.createElement("span");
+    g.className = "go";
+    g.textContent = "View ↗";
+    el.appendChild(g);
+  }
+  return el;
+}
+
+function loadMySubs() {
+  const my = ++mySubTok;
+  if (!user || user.type !== "account") { mySubWrap.hidden = true; return; }
+  mySubWrap.hidden = false;
+  emptyText(mySubList, "Loading...");
+
+  let uid = "";
+  currentAuthUser()
+    .then(function (u) {
+      if (!u) throw { code: "nosession" };
+      uid = u.uid;
+      const db = firebase.firestore();
+      return Promise.all([
+        withTimeout(db.collection("submissions").where("uid", "==", uid).limit(100).get(), 15000)
+          .then(function (snap) { return snap; }, function (e) { return { fail: e }; }),
+        loadUploads(uid, true).catch(function () { return []; })
+      ]);
+    })
+    .then(function (r) {
+      if (my !== mySubTok) return;
+      const items = [];
+      const accepted = {};
+      const keyOf = function (link, title) { return String(link || "").trim() || title; };
+      const snap = r[0];
+      const subFail = !!(snap && snap.fail);
+
+      if (!subFail) {
+        snap.forEach(function (d) {
+          const q = d.data();
+          const st = q.status === "accepted" ? "accepted" : (q.status === "rejected" ? "rejected" : "pending");
+          const title = reqTitle(q);
+          if (st === "accepted") accepted[keyOf(q.link, title)] = true;
+          items.push({ title: title, sub: reqSub(q), ms: q.ts || 0, link: q.link || "", st: st });
+        });
+      }
+
+      // Items published directly (trusted / admin) have no submission, so they are shown as Approved
+      r[1].forEach(function (x) {
+        if (accepted[keyOf(x.link, x.title)]) return;
+        items.push({ title: x.title, sub: x.label + " • " + x.sub, ms: x.ms || 0, link: x.link || "", st: "accepted" });
+      });
+
+      items.sort(function (a, b) { return b.ms - a.ms; });
+
+      if (!items.length) {
+        if (subFail) {
+          const c = (snap.fail && snap.fail.code) || "";
+          errorText(mySubList, c === "permission-denied"
+            ? "Could not load. Allow users to read their own submissions in Firestore rules."
+            : "Could not load. Check your internet.", loadMySubs);
+        } else {
+          emptyText(mySubList, "You have not submitted anything yet.");
+        }
+        return;
+      }
+
+      const cnt = { pending: 0, accepted: 0, rejected: 0 };
+      items.forEach(function (x) { cnt[x.st]++; });
+
+      mySubList.innerHTML = "";
+      const sum = document.createElement("p");
+      sum.className = "sumline";
+      sum.textContent = "Pending " + cnt.pending + " • Approved " + cnt.accepted + " • Rejected " + cnt.rejected;
+      mySubList.appendChild(sum);
+
+      const frag = document.createDocumentFragment();
+      items.forEach(function (x) { frag.appendChild(mySubRow(x)); });
+      mySubList.appendChild(frag);
+    })
+    .catch(function () {
+      if (my !== mySubTok) return;
+      errorText(mySubList, "Could not load. Check your internet.", loadMySubs);
+    });
 }
 
 function closeProfile() {
@@ -1528,6 +1673,8 @@ function buildPublic(e, uid, name) {
       kind: e.rKind, group: e.rGroup || "", gender: e.rGender || "",
       day: e.rDay, time: e.rTime, subject: e.rSubject, ts: now
     };
+    if (e.rChName) doc.chapterName = String(e.rChName).slice(0, 140);
+    if (e.rChNo) doc.chapterNo = String(e.rChNo).slice(0, 40);
   } else if (k === "paper") {
     col = "papers";
     doc = { type: e.paperType, subject: e.subject, title: e.title, marks: e.marks, link: e.link, ts: now };
@@ -1543,6 +1690,7 @@ function buildPublic(e, uid, name) {
       createdAt: firebase.firestore.FieldValue.serverTimestamp()
     };
   }
+  if (e.desc) doc.desc = String(e.desc).slice(0, 300);
   if (uid) doc.uid = uid;
   if (name) doc.by = String(name).slice(0, 80);
   return { col: col, doc: doc };
@@ -1709,6 +1857,8 @@ function submitNote() {
     kind: "note", subject: $("smSubject").value, type: type, link: link,
     chapterName: "", chapterNo: 0, topicName: ""
   };
+  const nDesc = $("smDesc").value.trim().slice(0, 300);
+  if (nDesc) e.desc = nDesc;
 
   if (type === "chapter") {
     const name = $("smChName").value.trim().slice(0, 140);
@@ -1732,6 +1882,7 @@ function submitNote() {
     $("smChNo").value = "";
     $("smTopic").value = "";
     $("smLink").value = "";
+    $("smDesc").value = "";
   });
 }
 
@@ -1754,6 +1905,7 @@ function smRoutineGroups() {
   if (groups.some(function (g) { return g.v === prev; })) sel.value = prev;
 
   $("smRGroupWrap").hidden = groups.length === 0;
+  $("smRChWrap").hidden = kind !== "exam";
   smRoutineGender();
 }
 
@@ -1777,13 +1929,26 @@ function submitRoutine() {
   const group = KIND_GROUPS[kind].length ? $("smRGroup").value : "";
   const gender = (kind === "exam" && group === "school") ? $("smRGender").value : "";
 
-  sendEntry({
+  const entry = {
     kind: "routine", rKind: kind, rGroup: group, rGender: gender,
     rDay: day, rTime: time, rSubject: subject
-  }, $("smRBtn"), function () {
+  };
+  if (kind === "exam") {
+    const chName = $("smRChName").value.trim().slice(0, 140);
+    const chNo = $("smRChNo").value.trim().slice(0, 40);
+    if (chName) entry.rChName = chName;
+    if (chNo) entry.rChNo = chNo;
+  }
+  const rDesc = $("smRDesc").value.trim().slice(0, 300);
+  if (rDesc) entry.desc = rDesc;
+
+  sendEntry(entry, $("smRBtn"), function () {
     $("smRDay").value = "";
     $("smRTime").value = "";
     $("smRSubject").value = "";
+    $("smRChName").value = "";
+    $("smRChNo").value = "";
+    $("smRDesc").value = "";
   });
 }
 
@@ -1799,13 +1964,18 @@ function submitPaper() {
   if (!marks || marks < 1) { setMsg(smMsg, "Please enter the marks.", "err"); return; }
   if (!isLink(link)) { setMsg(smMsg, "Please enter a valid link (https://...).", "err"); return; }
 
-  sendEntry({
+  const pEntry = {
     kind: "paper", paperType: $("smPType").value, subject: $("smPSubject").value,
     title: title, marks: marks, link: link
-  }, $("smPBtn"), function () {
+  };
+  const pDesc = $("smPDesc").value.trim().slice(0, 300);
+  if (pDesc) pEntry.desc = pDesc;
+
+  sendEntry(pEntry, $("smPBtn"), function () {
     $("smPTitle").value = "";
     $("smPMarks").value = "";
     $("smPLink").value = "";
+    $("smPDesc").value = "";
   });
 }
 
@@ -1830,13 +2000,18 @@ function submitQb() {
   if (!no || no < 1) { setMsg(smMsg, "Please enter the " + qbNoLabel($("smQType").value).toLowerCase() + ".", "err"); return; }
   if (!isLink(link)) { setMsg(smMsg, "Please enter a valid link (https://...).", "err"); return; }
 
-  sendEntry({
+  const qEntry = {
     kind: "qb", qbType: $("smQType").value, subject: $("smQSubject").value,
     title: title, link: link, qbNo: no
-  }, $("smQBtn"), function () {
+  };
+  const qDesc = $("smQDesc").value.trim().slice(0, 300);
+  if (qDesc) qEntry.desc = qDesc;
+
+  sendEntry(qEntry, $("smQBtn"), function () {
     $("smQTitle").value = "";
     $("smQLink").value = "";
     $("smQNo").value = "";
+    $("smQDesc").value = "";
   });
 }
 
@@ -1983,6 +2158,10 @@ function renderRoutine() {
     s.className = "tsub";
     s.textContent = r.subject;
     if (isNewItem(r.ts, "r_" + r.id)) s.appendChild(newTag());
+    const chl = descLine(routineChapter(r), "nch");
+    if (chl) s.appendChild(chl);
+    const rdl = descLine(r.desc);
+    if (rdl) s.appendChild(rdl);
     const bl = byLine(r.by);
     if (bl) s.appendChild(bl);
 
@@ -2130,7 +2309,7 @@ function loadActUsers(force, cb) {
   if (actUsers && !force && Date.now() - actUsers.t < 60000) { cb(true); return; }
 
   Promise.all([
-    readCol({ col: "people", order: "ts", desc: true, limit: 300 }),
+    readCol({ col: "people", limit: 300 }),
     readCol({ col: "trusted", limit: 200 }).catch(function () { return []; }),
     readCol({ col: "public_admins", limit: 50 }).catch(function () { return []; }),
     readCol({ col: "notes", select: ["uid"], limit: 1000 }).catch(function () { return null; }),
@@ -2192,33 +2371,49 @@ function meUid() {
   } catch (e) { return ""; }
 }
 
+// Is the logged-in person an admin? Works on the Users page too (no need to open the Admin Panel first)
+function amAdmin() {
+  if (isAdmin) return Promise.resolve(true);
+  if (!user || navigator.onLine === false) return Promise.resolve(false);
+  return currentAuthUser()
+    .then(function (u) {
+      if (!u) return false;
+      return firebase.firestore().collection("admins").doc(u.uid).get()
+        .then(function (d) { return d.exists; }, function () { return false; });
+    })
+    .catch(function () { return false; });
+}
+
 // Admin only: accounts that registered but never reached the public list are added here,
 // and their public list entry is created so every user sees them from now on.
 function mergeAccounts(cnt, trusted, admins) {
-  if (!isAdmin || !actUsers) return Promise.resolve();
-  return loadFirebase()
-    .then(function (db) {
-      return withTimeout(db.collection("users").limit(500).get(), 12000).then(function (snap) {
-        const have = {};
-        actUsers.arr.forEach(function (x) { have[x.id] = true; });
-        snap.forEach(function (d) {
-          if (have[d.id]) return;
-          const x = d.data() || {};
-          const c = cnt[d.id] || { note: 0, paper: 0, qb: 0 };
-          const nm = String(x.name || "User").slice(0, 80);
-          const rl = x.role === "teacher" ? "teacher" : "student";
-          const ts = Number(x.createdAt) || 0;
-          actUsers.arr.push({
-            id: d.id, uid: d.id, name: nm, role: rl, ts: ts,
-            trusted: !!trusted[d.id], admin: !!admins[d.id],
-            c: c, total: c.note + c.paper + c.qb
+  if (!actUsers) return Promise.resolve();
+  return amAdmin()
+    .then(function (ok) {
+      if (!ok || !actUsers) return null;
+      return loadFirebase().then(function (db) {
+        return withTimeout(db.collection("users").limit(500).get(), 12000).then(function (snap) {
+          const have = {};
+          actUsers.arr.forEach(function (x) { have[x.id] = true; });
+          snap.forEach(function (d) {
+            if (have[d.id]) return;
+            const x = d.data() || {};
+            const c = cnt[d.id] || { note: 0, paper: 0, qb: 0 };
+            const nm = String(x.name || "User").slice(0, 80);
+            const rl = x.role === "teacher" ? "teacher" : "student";
+            const ts = Number(x.createdAt) || 0;
+            actUsers.arr.push({
+              id: d.id, uid: d.id, name: nm, role: rl, ts: ts,
+              trusted: !!trusted[d.id], admin: !!admins[d.id],
+              c: c, total: c.note + c.paper + c.qb
+            });
+            db.collection("people").doc(d.id).set({ name: nm, role: rl, ts: ts || Date.now() })
+              .catch(function () { /* rules may not allow it: the admin still sees the user */ });
           });
-          db.collection("people").doc(d.id).set({ name: nm, role: rl, ts: ts || Date.now() })
-            .catch(function () { /* rules may not allow it: the admin still sees the user */ });
-        });
-        actUsers.arr.sort(function (a, b) {
-          return (b.total - a.total) || (b.admin - a.admin) || (b.trusted - a.trusted) ||
-            a.name.localeCompare(b.name);
+          actUsers.arr.sort(function (a, b) {
+            return (b.total - a.total) || (b.admin - a.admin) || (b.trusted - a.trusted) ||
+              a.name.localeCompare(b.name);
+          });
         });
       });
     })
@@ -2300,8 +2495,7 @@ function renderActUsers() {
 
     const s = document.createElement("div");
     s.className = "s";
-    s.textContent = (g.role === "teacher" ? "Teacher" : "Student") +
-      (g.ts ? " • Joined " + fmtFull(g.ts) : "");
+    s.textContent = (g.role === "teacher" ? "Teacher" : "Student");
 
     mid.appendChild(t);
     mid.appendChild(s);
@@ -2954,6 +3148,7 @@ function resetForm() {
   $("fChNo").value = "";
   $("fTopic").value = "";
   $("fLink").value = "";
+  $("fDesc").value = "";
   $("saveBtn").textContent = "Upload Note";
   $("editFlag").hidden = true;
   $("cancelEdit").hidden = true;
@@ -2974,6 +3169,9 @@ function saveNote() {
     type: type,
     link: link
   };
+  const nDescA = $("fDesc").value.trim().slice(0, 300);
+  if (nDescA) data.desc = nDescA;
+  else if (editingId) data.desc = firebase.firestore.FieldValue.delete();
 
   if (type === "chapter") {
     const name = $("fChName").value.trim();
@@ -3152,6 +3350,7 @@ listEl.addEventListener("click", function (e) {
     $("fChNo").value = n.chapterNo || "";
     $("fTopic").value = n.topicName || "";
     $("fLink").value = n.link || "";
+    $("fDesc").value = typeof n.desc === "string" ? n.desc : "";
     $("saveBtn").textContent = "Update Note";
     $("editFlag").hidden = false;
     $("cancelEdit").hidden = false;
@@ -3280,6 +3479,8 @@ function buildDetail(r) {
     addLine(d, "Day / Date", r.rDay);
     addLine(d, "Time", r.rTime);
     addLine(d, "Subject", r.rSubject);
+    addLine(d, "Chapter name", r.rChName);
+    addLine(d, "Chapter no.", r.rChNo);
   } else if (k === "paper") {
     addLine(d, "Type", PAPER_TYPES[r.paperType]);
     addLine(d, "Subject", subjectName(r.subject));
@@ -3292,6 +3493,7 @@ function buildDetail(r) {
     if (r.qbNo) addLine(d, r.qbType === "suggestion" ? "Chapter no." : "Paper no.", String(r.qbNo));
   }
 
+  addLine(d, "Description", r.desc);
   addLine(d, "Submitted by", by.name);
   addLine(d, "Submitted on", fmtFull(r.ts));
   addLine(d, "Role", (by.role === "teacher" ? "Teacher" : "Student"));
@@ -3423,6 +3625,7 @@ function setRoutineGroups() {
   if (groups.some(function (g) { return g.v === prev; })) sel.value = prev;
 
   $("rGroupWrap").hidden = groups.length === 0;
+  $("rChWrap").hidden = kind !== "exam";
   toggleGender();
 }
 
@@ -3456,6 +3659,14 @@ function saveRoutine() {
     subject: subject,
     ts: Date.now()
   };
+  if (kind === "exam") {
+    const rcn = $("fRChName").value.trim().slice(0, 140);
+    const rcc = $("fRChNo").value.trim().slice(0, 40);
+    if (rcn) data.chapterName = rcn;
+    if (rcc) data.chapterNo = rcc;
+  }
+  const rDescA = $("fRDesc").value.trim().slice(0, 300);
+  if (rDescA) data.desc = rDescA;
 
   const btn = $("saveRoutine");
   btn.disabled = true;
@@ -3474,6 +3685,9 @@ function saveRoutine() {
       $("fRDay").value = "";
       $("fRTime").value = "";
       $("fRSubject").value = "";
+      $("fRChName").value = "";
+      $("fRChNo").value = "";
+      $("fRDesc").value = "";
       rtCache = {};
       lsBust();
       if (adminRoutines) {
@@ -3666,7 +3880,8 @@ function renderPapers() {
       sub: subjectName(p.subject) + (p.marks ? " • " + p.marks + " Marks" : "") + noText(p),
       link: p.link,
       ts: p.ts,
-      by: p.by
+      by: p.by,
+      desc: p.desc
     });
   });
 }
@@ -3698,6 +3913,7 @@ function ppReset() {
   $("ppTitle").value = "";
   $("ppMarks").value = "";
   $("ppLink").value = "";
+  $("ppDesc").value = "";
   $("ppSave").textContent = "Upload Paper";
   $("ppEditFlag").hidden = true;
   $("ppCancel").hidden = true;
@@ -3711,6 +3927,7 @@ function qbReset() {
   $("qbNo").value = "";
   syncQbNo("qbType", "qbNoLbl");
   $("qbLink").value = "";
+  $("qbDesc").value = "";
   $("qbSave").textContent = "Upload to Question Bank";
   $("qbEditFlag").hidden = true;
   $("qbCancel").hidden = true;
@@ -3735,6 +3952,9 @@ function savePaper() {
     marks: marks,
     link: link
   };
+  const pDescA = $("ppDesc").value.trim().slice(0, 300);
+  if (pDescA) data.desc = pDescA;
+  else if (ppEditId) data.desc = firebase.firestore.FieldValue.delete();
 
   const btn = $("ppSave");
   btn.disabled = true;
@@ -3786,6 +4006,9 @@ function saveQb() {
     no: no,
     link: link
   };
+  const qDescA = $("qbDesc").value.trim().slice(0, 300);
+  if (qDescA) data.desc = qDescA;
+  else if (qbEditId) data.desc = firebase.firestore.FieldValue.delete();
 
   const btn = $("qbSave");
   btn.disabled = true;
@@ -3929,6 +4152,7 @@ function paperListClick(e) {
       $("qbNo").value = p.no || "";
       syncQbNo("qbType", "qbNoLbl");
       $("qbLink").value = p.link || "";
+      $("qbDesc").value = typeof p.desc === "string" ? p.desc : "";
       $("qbSave").textContent = "Update Item";
       $("qbEditFlag").hidden = false;
       $("qbCancel").hidden = false;
@@ -3939,6 +4163,7 @@ function paperListClick(e) {
       $("ppTitle").value = p.title || "";
       $("ppMarks").value = p.marks || "";
       $("ppLink").value = p.link || "";
+      $("ppDesc").value = typeof p.desc === "string" ? p.desc : "";
       $("ppSave").textContent = "Update Paper";
       $("ppEditFlag").hidden = false;
       $("ppCancel").hidden = false;
@@ -4020,8 +4245,7 @@ function renderUsers() {
 
     const s = document.createElement("div");
     s.className = "s";
-    s.textContent = (u.role === "teacher" ? "Teacher" : "Student") + " • Email" +
-      (u.ts ? " • Joined " + fmtFull(u.ts) : "");
+    s.textContent = (u.role === "teacher" ? "Teacher" : "Student") + " • Email";
 
     const acts = document.createElement("div");
     acts.className = "acts";
@@ -4112,7 +4336,6 @@ function renderUsBody() {
           addLine(box, "School", (p && p.school) || "-");
           addLine(box, "Date of birth", (p && p.dob) || "-");
         }
-        addLine(box, "Registered", fmtFull((p && p.createdAt) || u.ts));
         if (actUsers && actUsers.counted) {
           addLine(box, "Uploads", u.total + " total • Notes " + u.c.note +
             " • PYQ " + u.c.paper + " • Question Bank " + u.c.qb);
@@ -4351,6 +4574,8 @@ function makeRow(o) {
     s.textContent = o.sub;
     box.appendChild(s);
   }
+  const dl = descLine(o.desc);
+  if (dl) box.appendChild(dl);
   const bl = byLine(o.by);
   if (bl) box.appendChild(bl);
 
@@ -4831,7 +5056,10 @@ $("uSave").addEventListener("click", function () {
     .then(function (db) {
       return db.collection("settings").doc("app").set({ version: ver, url: url, note: note.slice(0, 300), force: $("uForce").checked });
     })
-    .then(function () { lsBust(); showMsg("Saved. Apps with an older version will see the update alert.", "ok"); })
+    .then(function () {
+      lsBust();
+      showMsg("Saved. Users on an older version will now see the update alert.", "ok");
+    })
     .catch(function () { showMsg("Could not save. Publish the new Firestore rules and check your internet.", "err"); })
     .then(function () { btn.disabled = false; });
 });
