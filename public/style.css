@@ -9,18 +9,7 @@
   --ok: #16a34a;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #0f1420;
-    --surface: #1a2030;
-    --text: #eef1f7;
-    --muted: #9aa3b5;
-    --border: #2a3247;
-    --brand: #818cf8;
-    --danger: #f87171;
-    --ok: #4ade80;
-  }
-}
+
 
 * {
   box-sizing: border-box;
@@ -124,15 +113,6 @@ img { -webkit-user-drag: none; }
 
 .tbtn:active { opacity: 0.7; }
 
-/* Install icon in the header (link styled like the other header buttons) */
-a.tbtn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
-}
-
-a.tbtn[hidden] { display: none; }
 
 /* ---------- Subject grid ---------- */
 .grid {
@@ -193,15 +173,7 @@ a.tbtn[hidden] { display: none; }
 .c6 { --tint: #ffedd5; }
 .c7 { --tint: #cffafe; }
 
-@media (prefers-color-scheme: dark) {
-  .c1 { --tint: #4a2326; }
-  .c2 { --tint: #1e3350; }
-  .c3 { --tint: #4a3a15; }
-  .c4 { --tint: #1c3d2a; }
-  .c5 { --tint: #33295a; }
-  .c6 { --tint: #4a2f17; }
-  .c7 { --tint: #15404a; }
-}
+
 
 /* ---------- Side menu (no animation) ---------- */
 .overlay {
@@ -750,13 +722,7 @@ input[type="file"].inp { padding: 8px; font-size: 13px; }
   background: #fef3c7;
 }
 
-@media (prefers-color-scheme: dark) {
-  .badge.admin { color: #0f1420; }
-  .badge.trusted {
-    color: #fcd34d;
-    background: #4a3a15;
-  }
-}
+
 
 /* ---------- Student: notes ---------- */
 .nlink {
@@ -1079,6 +1045,11 @@ details.guide summary {
   to   { opacity: 1; transform: translate3d(0, 0, 0); }
 }
 
+@keyframes ez-page {
+  from { opacity: 0; transform: translate3d(0, 8px, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+
 @keyframes ez-drawer {
   from { transform: translate3d(-100%, 0, 0); }
   to   { transform: translate3d(0, 0, 0); }
@@ -1096,7 +1067,7 @@ details.guide summary {
 
 /* Pages (subject, routine, papers, profile, submit, users, contact, admin) */
 .panel:not([hidden]) {
-  animation: ez-up 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: ez-page 0.15s ease-out;
 }
 
 /* The login screen appears at app start: no animation there */
@@ -1111,20 +1082,16 @@ details.guide summary {
 .dlg:not([hidden]) .dlg-box { animation: ez-up 0.16s ease-out; }
 .toast:not([hidden]) { animation: ez-toast 0.18s ease-out; }
 
-/* Tap feedback: tiny press effect, transform only (very cheap) */
-.card, .btn, .tbtn, .menu-btn, .close-btn, .nlink, .crow {
-  transition: transform 0.1s ease-out;
-}
-
+/* Tap feedback: opacity only (no transform, so the phone never builds extra layers while you scroll and tap) */
 .card:active, .btn:active, .tbtn:active, .menu-btn:active,
-.close-btn:active, .nlink:active, .crow:active {
-  transform: scale(0.97);
+.close-btn:active, .nlink:active, .crow:active, .nbtn:active {
+  opacity: 0.7;
 }
 
-.nlink.static:active { transform: none; }
+.nlink.static:active { opacity: 1; }
 
 /* Long lists: the phone skips drawing rows that are off screen */
-.nlink, .note, .crow {
+.nrow, .note, .crow {
   content-visibility: auto;
   contain-intrinsic-size: auto 60px;
 }
@@ -1281,4 +1248,149 @@ html.lite #reloadBtn.spin, html.lite #actRefresh.spin { animation-duration: 1s; 
 @media (max-width: 380px) {
   .tgrp { gap: 4px; }
   .tbtn.tsmall { width: 30px; min-width: 30px; height: 30px; font-size: 17px; }
+}
+
+
+/* ---------- Manual dark / light mode (menu) ---------- */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0f1420;
+  --surface: #1a2030;
+  --text: #eef1f7;
+  --muted: #9aa3b5;
+  --border: #2a3247;
+  --brand: #818cf8;
+  --danger: #f87171;
+  --ok: #4ade80;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f5f6fa;
+  --surface: #ffffff;
+  --text: #1c2233;
+  --muted: #6b7280;
+  --border: #e4e7ee;
+  --brand: #4f46e5;
+  --danger: #dc2626;
+  --ok: #16a34a;
+}
+:root[data-theme="dark"] .c1 { --tint: #4a2326; }
+:root[data-theme="dark"] .c2 { --tint: #1e3350; }
+:root[data-theme="dark"] .c3 { --tint: #4a3a15; }
+:root[data-theme="dark"] .c4 { --tint: #1c3d2a; }
+:root[data-theme="dark"] .c5 { --tint: #33295a; }
+:root[data-theme="dark"] .c6 { --tint: #4a2f17; }
+:root[data-theme="dark"] .c7 { --tint: #15404a; }
+:root[data-theme="light"] .c1 { --tint: #fee2e2; }
+:root[data-theme="light"] .c2 { --tint: #dbeafe; }
+:root[data-theme="light"] .c3 { --tint: #fef3c7; }
+:root[data-theme="light"] .c4 { --tint: #dcfce7; }
+:root[data-theme="light"] .c5 { --tint: #ede9fe; }
+:root[data-theme="light"] .c6 { --tint: #ffedd5; }
+:root[data-theme="light"] .c7 { --tint: #cffafe; }
+:root[data-theme="dark"] .badge.admin { color: #0f1420; }
+:root[data-theme="dark"] .badge.trusted { color: #fcd34d; background: #4a3a15; }
+:root[data-theme="light"] .badge.admin { color: #fff; }
+:root[data-theme="light"] .badge.trusted { color: #92400e; background: #fef3c7; }
+
+/* ---------- Search, notices, rows with Save / Share, NEW badge, countdown ---------- */
+.search { margin: 0 0 10px; }
+.search .inp { padding: 9px 12px; font-size: 15px; }
+
+textarea.inp { resize: vertical; min-height: 76px; }
+
+.notices {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 8px 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--brand);
+  border-radius: 10px;
+}
+.notice .ni { font-size: 16px; line-height: 1.3; }
+.notice .nb { flex: 1; min-width: 0; }
+.notice .ntx { font-size: 13.5px; font-weight: 600; line-height: 1.4; word-break: break-word; }
+.notice .nd { margin-top: 2px; font-size: 11px; color: var(--muted); }
+.notice .nclose {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  font-size: 12px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+
+.nrow {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  margin-top: 8px;
+}
+.nrow .nlink { flex: 1; min-width: 0; margin-top: 0; }
+
+.nact {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.nbtn {
+  width: 34px;
+  height: 34px;
+  font: inherit;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  cursor: pointer;
+}
+.nbtn.on { color: #f59e0b; }
+
+.nnew {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  color: #fff;
+  background: #ef4444;
+  border-radius: 20px;
+  vertical-align: middle;
+}
+
+.cdcard {
+  margin-bottom: 10px;
+  padding: 10px 12px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--brand);
+  border-radius: 10px;
+}
+.cdcard .cdt { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.cdcard .cdv { margin: 2px 0; font-size: 15px; font-weight: 700; word-break: break-word; }
+
+.rtable .cd {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--brand);
+}
+
+@media (max-width: 380px) {
+  .nbtn { width: 30px; height: 30px; font-size: 15px; }
 }

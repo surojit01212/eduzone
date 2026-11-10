@@ -12,6 +12,12 @@ const firebaseConfig = {
 
 let lastNetErr = "";
 
+/* ---------- App version (APK) ----------
+   Every time you build a NEW APK, increase this number by 1.
+   When Admin > Update has a bigger version, users see "Update available". */
+const APP_VERSION = 1;
+const APK_FALLBACK_URL = "https://github.com/surojit01212/eduzone/releases/latest/download/EduZone.apk";
+
 /* ---------- Lazy Firebase loader (timeout + retry) ---------- */
 const FB_BASE = "https://www.gstatic.com/firebasejs/10.12.2/";
 let firebasePromise = null;
@@ -356,6 +362,7 @@ const ppView = $("ppView");
 const actView = $("actView");
 const profView = $("profView");
 const ctView = $("ctView");
+const svView = $("svView");
 const toastEl = $("toast");
 
 // Run heavy work (list rendering) AFTER the open animation has painted its first frame,
@@ -368,7 +375,7 @@ function afterPaint(fn) {
 function syncScroll() {
   const open = !panel.hidden || !subView.hidden || !rtView.hidden ||
     !smView.hidden || !authView.hidden || !ppView.hidden ||
-    !actView.hidden || !profView.hidden || !ctView.hidden;
+    !actView.hidden || !profView.hidden || !ctView.hidden || !svView.hidden;
   document.body.style.overflow = open ? "hidden" : "";
 }
 
@@ -442,6 +449,7 @@ function hideToast() {
 }
 
 function emptyText(parent, text) {
+  parent._tok = (parent._tok || 0) + 1;
   parent.innerHTML = "";
   const p = document.createElement("p");
   p.className = "empty";
@@ -451,6 +459,7 @@ function emptyText(parent, text) {
 
 // Error text with a Retry button
 function errorText(parent, text, retry) {
+  parent._tok = (parent._tok || 0) + 1;
   parent.innerHTML = "";
   const wrap = document.createElement("div");
   wrap.className = "empty";
@@ -772,6 +781,7 @@ function enterApp() {
   renderUserBox();
   syncScroll();
   syncMe();
+  startPush();
 }
 
 function authError(err, el) {
@@ -1039,6 +1049,10 @@ function buildMenu() {
 
   frag.appendChild(item("👥", "Users", "activity", false));
   frag.appendChild(item("✉️", "Contact Us", "contact", false));
+  frag.appendChild(item("⭐", "Saved", "saved", false));
+  frag.appendChild(item("🌙", themeLabel(), "theme", false));
+  frag.appendChild(item("⚡", liteLabel(), "lite", false));
+  if (isNative() && pushPlugin()) frag.appendChild(item("🔔", pushLabel(), "push", false));
 
   const sep = document.createElement("div");
   sep.className = "sep";
@@ -1084,6 +1098,9 @@ $("drawerList").addEventListener("click", function (e) {
     qbSub.hidden = !qbSub.hidden;
     return;
   }
+  if (go === "theme") { toggleTheme(); b.children[1].textContent = themeLabel(); return; }
+  if (go === "lite") { toggleLite(); b.children[1].textContent = liteLabel(); return; }
+  if (go === "push") { togglePush(b); return; }
   if (go === "logout") {
     closeMenu();
     doLogout();
@@ -1098,6 +1115,7 @@ $("drawerList").addEventListener("click", function (e) {
   closeActivity();
   closeProfile();
   closeContact();
+  closeSaved();
   closePanel();
 
   if (go === "admin") {
@@ -1108,6 +1126,8 @@ $("drawerList").addEventListener("click", function (e) {
     openActivity();
   } else if (go === "contact") {
     openContact();
+  } else if (go === "saved") {
+    openSaved();
   } else if (go.indexOf("rt-") === 0) {
     openRoutine(go.slice(3));
   } else if (go.indexOf("pp-") === 0) {
@@ -1198,6 +1218,7 @@ function loadSubject(id) {
           chapterNo: n.chapterNo,
           chapterName: n.chapterName,
           topicName: n.topicName,
+          createdAt: n.createdAt || 0,
           by: typeof n.by === "string" ? n.by : ""
         };
       });
@@ -1229,35 +1250,16 @@ function renderSubject() {
     return;
   }
 
-  subList.innerHTML = "";
-  const frag = document.createDocumentFragment();
-  items.forEach(function (n) {
-    const a = document.createElement("a");
-    a.className = "nlink";
-    a.href = n.link;
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-
-    const t = document.createElement("span");
-    t.className = "nt";
-    t.textContent = n.type === "chapter"
-      ? "Chapter " + n.chapterNo + ": " + n.chapterName
-      : n.topicName;
-
-    const box = document.createElement("div");
-    box.appendChild(t);
-    const bl = byLine(n.by);
-    if (bl) box.appendChild(bl);
-
-    const g = document.createElement("span");
-    g.className = "go";
-    g.textContent = "Open ↗";
-
-    a.appendChild(box);
-    a.appendChild(g);
-    frag.appendChild(a);
+  fillRows(subList, items, function (n) {
+    return makeRow({
+      key: "n_" + n.id,
+      title: n.type === "chapter" ? "Chapter " + n.chapterNo + ": " + n.chapterName : n.topicName,
+      ssub: subjectName(n.subject) + " • " + (n.type === "chapter" ? "Chapter" : n.type === "grammar" ? "Grammar" : "Topic"),
+      link: n.link,
+      ts: n.createdAt,
+      by: n.by
+    });
   });
-  subList.appendChild(frag);
 }
 
 $("subClose").addEventListener("click", closeSubject);
@@ -1922,17 +1924,32 @@ function renderRoutine() {
   thead.appendChild(head);
   table.appendChild(thead);
 
+  const showCd = view.kind !== "tuition";
+  let nextR = null;
+  let nextDays = 1e9;
+
   const tbody = document.createElement("tbody");
   items.forEach(function (r) {
     const tr = document.createElement("tr");
 
     const d = document.createElement("td");
     d.textContent = r.day;
+    if (showCd) {
+      const dl = daysLeft(r.day);
+      if (dl !== null && dl >= 0) {
+        const cd = document.createElement("span");
+        cd.className = "cd";
+        cd.textContent = leftText(dl);
+        d.appendChild(cd);
+        if (dl < nextDays) { nextDays = dl; nextR = r; }
+      }
+    }
     const t = document.createElement("td");
     t.textContent = r.time;
     const s = document.createElement("td");
     s.className = "tsub";
     s.textContent = r.subject;
+    if (isNewItem(r.ts, "r_" + r.id)) s.appendChild(newTag());
     const bl = byLine(r.by);
     if (bl) s.appendChild(bl);
 
@@ -1945,6 +1962,23 @@ function renderRoutine() {
   wrap.appendChild(table);
 
   rtList.innerHTML = "";
+  if (nextR) {
+    const card = document.createElement("div");
+    card.className = "cdcard";
+    const c1 = document.createElement("div");
+    c1.className = "cdt";
+    c1.textContent = "⏳ Next exam";
+    const c2 = document.createElement("div");
+    c2.className = "cdv";
+    c2.textContent = nextR.subject + " • " + leftText(nextDays);
+    const c3 = document.createElement("div");
+    c3.className = "cdt";
+    c3.textContent = nextR.day + (nextR.time ? " • " + nextR.time : "");
+    card.appendChild(c1);
+    card.appendChild(c2);
+    card.appendChild(c3);
+    rtList.appendChild(card);
+  }
   rtList.appendChild(wrap);
 }
 
@@ -2583,6 +2617,7 @@ function closePanel() {
   adminPapers = null;
   usersCache = null;
   usSel = null;
+  adminNotices = null;
 }
 
 $("closeBtn").addEventListener("click", closePanel);
@@ -2609,6 +2644,8 @@ function switchTab(name) {
   $("qbView").hidden = name !== "qb";
   $("usersView").hidden = name !== "users";
   $("contactView").hidden = name !== "contact";
+  $("noticeView").hidden = name !== "notice";
+  $("updateView").hidden = name !== "update";
   $("tabUpload").classList.toggle("on", name === "upload");
   $("tabManage").classList.toggle("on", name === "manage");
   $("tabRequests").classList.toggle("on", name === "requests");
@@ -2618,6 +2655,8 @@ function switchTab(name) {
   $("tabQb").classList.toggle("on", name === "qb");
   $("tabUsers").classList.toggle("on", name === "users");
   $("tabContact").classList.toggle("on", name === "contact");
+  $("tabNotice").classList.toggle("on", name === "notice");
+  $("tabUpdate").classList.toggle("on", name === "update");
   showMsg("");
   if (name === "manage") loadNotes();
   if (name === "requests") loadRequests();
@@ -2626,6 +2665,8 @@ function switchTab(name) {
   if (name === "papers" || name === "qb") loadAdminPapers();
   if (name === "users") loadUsersTab(false);
   if (name === "contact") loadContactAdmin();
+  if (name === "notice") loadNoticeAdmin();
+  if (name === "update") loadUpdateAdmin();
 }
 
 $("tabUpload").addEventListener("click", function () { switchTab("upload"); });
@@ -3536,36 +3577,16 @@ function renderPapers() {
     return;
   }
 
-  ppList.innerHTML = "";
-  const frag = document.createDocumentFragment();
-  items.forEach(function (p) {
-    const a = document.createElement("a");
-    a.className = "nlink";
-    a.href = p.link;
-    a.target = "_blank";
-    a.rel = "noopener noreferrer";
-
-    const box = document.createElement("div");
-    const t = document.createElement("span");
-    t.className = "nt";
-    t.textContent = p.title;
-    const s = document.createElement("span");
-    s.className = "ns";
-    s.textContent = subjectName(p.subject) + (p.marks ? " • " + p.marks + " Marks" : "") + noText(p);
-    box.appendChild(t);
-    box.appendChild(s);
-    const bl = byLine(p.by);
-    if (bl) box.appendChild(bl);
-
-    const g = document.createElement("span");
-    g.className = "go";
-    g.textContent = "Open ↗";
-
-    a.appendChild(box);
-    a.appendChild(g);
-    frag.appendChild(a);
+  fillRows(ppList, items, function (p) {
+    return makeRow({
+      key: "p_" + p.id,
+      title: p.title,
+      sub: subjectName(p.subject) + (p.marks ? " • " + p.marks + " Marks" : "") + noText(p),
+      link: p.link,
+      ts: p.ts,
+      by: p.by
+    });
   });
-  ppList.appendChild(frag);
 }
 
 $("ppFilter").addEventListener("change", renderPapers);
@@ -4160,6 +4181,744 @@ function runDeleteUser(id, btn) {
     });
 }
 
+/* ---------- Search, NEW badge, Save, Share, Notice board, Exam countdown, Theme ---------- */
+const NEW_MS = 7 * 86400000;
+let seenMap = {};
+try {
+  (JSON.parse(localStorage.getItem("ez_seen") || "[]") || []).forEach(function (k) { seenMap[k] = 1; });
+} catch (e) { seenMap = {}; }
+
+function markSeen(k) {
+  if (!k || seenMap[k]) return;
+  seenMap[k] = 1;
+  try { localStorage.setItem("ez_seen", JSON.stringify(Object.keys(seenMap).slice(-300))); } catch (e) { /* ignore */ }
+}
+
+// NEW = published in the last 7 days and not opened yet on this phone
+function isNewItem(ts, key) {
+  if (!ts) return false;
+  const age = Date.now() - ts;
+  return age < NEW_MS && age > -86400000 && !(key && seenMap[key]);
+}
+
+function newTag() {
+  const s = document.createElement("span");
+  s.className = "nnew";
+  s.textContent = "NEW";
+  return s;
+}
+
+/* ----- Saved items (kept on the phone) ----- */
+let savedMap = {};
+try {
+  (JSON.parse(localStorage.getItem("ez_saved") || "[]") || []).forEach(function (x) {
+    if (x && x.key) savedMap[x.key] = x;
+  });
+} catch (e) { savedMap = {}; }
+
+function persistSaved() {
+  try {
+    localStorage.setItem("ez_saved", JSON.stringify(Object.keys(savedMap).map(function (k) { return savedMap[k]; })));
+  } catch (e) { /* storage full or blocked */ }
+}
+
+// returns true when the item is saved now, false when it was removed
+function toggleSaved(o) {
+  if (savedMap[o.key]) {
+    delete savedMap[o.key];
+    persistSaved();
+    return false;
+  }
+  savedMap[o.key] = { key: o.key, title: o.title, sub: o.sub || o.ssub || "", link: o.link, at: Date.now() };
+  persistSaved();
+  return true;
+}
+
+/* ----- Share ----- */
+function shareItem(title, link) {
+  const text = title + "\n" + link + "\n\nEduZone by Surojit";
+  if (navigator.share) {
+    navigator.share({ title: title, text: text }).catch(function () { /* cancelled */ });
+    return;
+  }
+  window.open("https://wa.me/?text=" + encodeURIComponent(text), "_blank");
+}
+
+/* ----- One list row: link + NEW badge + save + share ----- */
+// o = { key, title, sub, ssub, link, ts, by }
+function makeRow(o) {
+  const row = document.createElement("div");
+  row.className = "nrow";
+  row._o = o;
+
+  const a = document.createElement("a");
+  a.className = "nlink";
+  a.href = o.link;
+  a.target = "_blank";
+  a.rel = "noopener noreferrer";
+
+  const box = document.createElement("div");
+  const t = document.createElement("span");
+  t.className = "nt";
+  t.textContent = o.title;
+  if (isNewItem(o.ts, o.key)) t.appendChild(newTag());
+  box.appendChild(t);
+  if (o.sub) {
+    const s = document.createElement("span");
+    s.className = "ns";
+    s.textContent = o.sub;
+    box.appendChild(s);
+  }
+  const bl = byLine(o.by);
+  if (bl) box.appendChild(bl);
+
+  const g = document.createElement("span");
+  g.className = "go";
+  g.textContent = "Open ↗";
+  a.appendChild(box);
+  a.appendChild(g);
+
+  const acts = document.createElement("div");
+  acts.className = "nact";
+  const st = document.createElement("button");
+  st.type = "button";
+  st.className = "nbtn" + (savedMap[o.key] ? " on" : "");
+  st.dataset.act = "star";
+  st.setAttribute("aria-label", "Save");
+  st.textContent = savedMap[o.key] ? "★" : "☆";
+  const sh = document.createElement("button");
+  sh.type = "button";
+  sh.className = "nbtn";
+  sh.dataset.act = "share";
+  sh.setAttribute("aria-label", "Share");
+  sh.textContent = "📤";
+  acts.appendChild(st);
+  acts.appendChild(sh);
+
+  row.appendChild(a);
+  row.appendChild(acts);
+  return row;
+}
+
+// Builds a long list in two steps (first rows now, the rest right after), so opening a page never freezes
+function fillRows(parent, items, build) {
+  parent.innerHTML = "";
+  const tok = (parent._tok = (parent._tok || 0) + 1);
+  const FIRST = 24;
+  const f1 = document.createDocumentFragment();
+  for (let i = 0; i < items.length && i < FIRST; i++) f1.appendChild(build(items[i]));
+  parent.appendChild(f1);
+  if (items.length <= FIRST) return;
+  setTimeout(function () {
+    if (parent._tok !== tok) return;
+    const f2 = document.createDocumentFragment();
+    for (let i = FIRST; i < items.length; i++) f2.appendChild(build(items[i]));
+    parent.appendChild(f2);
+  }, 30);
+}
+
+document.addEventListener("click", function (e) {
+  const tg = e.target;
+  if (!tg || !tg.closest) return;
+
+  const b = tg.closest(".nbtn");
+  if (b) {
+    e.preventDefault();
+    const row = b.closest(".nrow");
+    const o = row && row._o;
+    if (!o) return;
+    if (b.dataset.act === "share") {
+      shareItem(o.title, o.link);
+    } else {
+      const on = toggleSaved(o);
+      b.textContent = on ? "★" : "☆";
+      b.classList.toggle("on", on);
+      toast(on ? "Saved ⭐" : "Removed from Saved", false, "ok");
+      if (!svView.hidden) renderSaved();
+    }
+    return;
+  }
+
+  const l = tg.closest(".nrow .nlink");
+  if (l) {
+    const row = l.closest(".nrow");
+    if (row && row._o && row._o.key) {
+      markSeen(row._o.key);
+      const nb = l.querySelector(".nnew");
+      if (nb) nb.parentNode.removeChild(nb);
+    }
+  }
+});
+
+/* ---------- Saved page ---------- */
+const svList = $("svList");
+
+function openSaved() {
+  svView.hidden = false;
+  svView.scrollTop = 0;
+  syncScroll();
+  afterPaint(renderSaved);
+}
+
+function closeSaved() {
+  svView.hidden = true;
+  syncScroll();
+}
+
+function renderSaved() {
+  const arr = Object.keys(savedMap).map(function (k) { return savedMap[k]; });
+  arr.sort(function (a, b) { return (b.at || 0) - (a.at || 0); });
+  if (!arr.length) {
+    emptyText(svList, "Nothing saved yet. Tap ☆ on any note or paper.");
+    return;
+  }
+  fillRows(svList, arr, function (x) {
+    return makeRow({ key: x.key, title: x.title, sub: x.sub, link: x.link, ts: 0, by: "" });
+  });
+}
+
+$("svClose").addEventListener("click", closeSaved);
+
+/* ---------- Home search (notes, papers, question bank, subjects) ---------- */
+const homeSearch = $("homeSearch");
+const searchRes = $("searchRes");
+const subjectsEl = $("subjects");
+let searchIdx = lsGet("srch");
+let searchPromise = null;
+let searchFresh = false;
+let searchTimer = null;
+
+// One small request builds a search list; it is kept on the phone for 10 minutes
+function getSearchIndex() {
+  if (searchIdx && (searchFresh || lsFresh("srch", 600000))) {
+    searchFresh = true;
+    return Promise.resolve(searchIdx);
+  }
+  if (searchPromise) return searchPromise;
+
+  searchPromise = Promise.all([
+    readCol({
+      col: "notes",
+      select: ["subject", "type", "link", "chapterNo", "chapterName", "topicName", "createdAt", "by"],
+      limit: 1000
+    }),
+    readCol({
+      col: "papers",
+      select: ["type", "subject", "title", "marks", "no", "link", "ts", "by"],
+      limit: 1000
+    })
+  ])
+    .then(function (r) {
+      const out = [];
+      r[0].forEach(function (n) {
+        if (!n.link) return;
+        const title = noteTitle(n);
+        const sn = subjectName(n.subject);
+        out.push({
+          k: "n_" + n.id, t: title, s: sn + " • Note", l: n.link, ts: n.createdAt || 0,
+          by: typeof n.by === "string" ? n.by : "",
+          h: (title + " " + sn + " note").toLowerCase()
+        });
+      });
+      r[1].forEach(function (p) {
+        if (!p.link) return;
+        const kind = PAPER_TYPES[p.type] || QB_TYPES[p.type] || "Paper";
+        const sn = subjectName(p.subject);
+        out.push({
+          k: "p_" + p.id, t: p.title || "", s: sn + " • " + kind + (p.marks ? " • " + p.marks + " Marks" : "") + noText(p),
+          l: p.link, ts: p.ts || 0, by: typeof p.by === "string" ? p.by : "",
+          h: ((p.title || "") + " " + sn + " " + kind + " " + (p.marks || "")).toLowerCase()
+        });
+      });
+      searchIdx = out;
+      searchFresh = true;
+      lsSet("srch", out);
+      searchPromise = null;
+      return out;
+    })
+    .catch(function (err) {
+      searchPromise = null;
+      if (searchIdx) return searchIdx;
+      throw err;
+    });
+  return searchPromise;
+}
+
+function showSearchResults(q) {
+  const words = q.split(/\s+/).filter(Boolean);
+  searchRes.innerHTML = "";
+  searchRes._tok = (searchRes._tok || 0) + 1;
+
+  const subs = SUBJECTS.filter(function (s) {
+    const n = s.name.toLowerCase();
+    return words.every(function (w) { return n.indexOf(w) >= 0; });
+  });
+  const found = (searchIdx || []).filter(function (x) {
+    return words.every(function (w) { return x.h.indexOf(w) >= 0; });
+  }).slice(0, 40);
+
+  if (!subs.length && !found.length) {
+    emptyText(searchRes, "No results found");
+    return;
+  }
+
+  if (subs.length) {
+    const lb = document.createElement("p");
+    lb.className = "lbl";
+    lb.textContent = "Subjects";
+    searchRes.appendChild(lb);
+    const wrap = document.createElement("div");
+    wrap.className = "grid";
+    subs.forEach(function (s) {
+      const src = subjectsEl.querySelector('[data-subject="' + s.id + '"]');
+      if (src) wrap.appendChild(src.cloneNode(true));
+    });
+    searchRes.appendChild(wrap);
+  }
+
+  if (found.length) {
+    const lb2 = document.createElement("p");
+    lb2.className = "lbl";
+    lb2.textContent = "Notes & Papers";
+    searchRes.appendChild(lb2);
+    const box = document.createElement("div");
+    searchRes.appendChild(box);
+    fillRows(box, found, function (x) {
+      return makeRow({ key: x.k, title: x.t, sub: x.s, link: x.l, ts: x.ts, by: x.by });
+    });
+  }
+}
+
+function runSearch() {
+  const q = homeSearch.value.trim().toLowerCase();
+  if (q.length < 2) {
+    searchRes.hidden = true;
+    subjectsEl.hidden = false;
+    return;
+  }
+  subjectsEl.hidden = true;
+  searchRes.hidden = false;
+
+  if (searchIdx) showSearchResults(q);
+  else emptyText(searchRes, "Searching...");
+
+  getSearchIndex()
+    .then(function () {
+      if (homeSearch.value.trim().toLowerCase() === q) showSearchResults(q);
+    })
+    .catch(function () {
+      if (!searchIdx && homeSearch.value.trim().toLowerCase() === q) {
+        errorText(searchRes, offlineText(), runSearch);
+      }
+    });
+}
+
+homeSearch.addEventListener("input", function () {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(runSearch, 200);
+});
+
+searchRes.addEventListener("click", function (e) {
+  const card = e.target.closest(".card");
+  if (!card) return;
+  openSubject(card.dataset.subject);
+});
+
+/* ---------- Notice board (home) ---------- */
+// Stored in settings/notices = { items: [ { id, text, ts } ] }. It uses the same public
+// "settings" collection as Contact Us, so no new Firestore rule is needed.
+const noticeBox = $("noticeBox");
+const NOTICE_DAYS = 30;
+let adminNotices = null;
+
+function cleanNotices(a) {
+  const out = [];
+  (Array.isArray(a) ? a : []).forEach(function (x) {
+    if (!x || !x.text) return;
+    out.push({ id: String(x.id || x.ts || ""), text: String(x.text).slice(0, 300), ts: Number(x.ts) || 0 });
+  });
+  out.sort(function (p, q) { return q.ts - p.ts; });
+  return out.slice(0, 20);
+}
+
+function dismissedNotices() {
+  try { return JSON.parse(localStorage.getItem("ez_nd") || "[]") || []; } catch (e) { return []; }
+}
+
+function fmtShort(ts) {
+  if (!ts) return "";
+  try { return new Date(ts).toLocaleDateString([], { day: "numeric", month: "short" }); } catch (e) { return ""; }
+}
+
+function renderNotices(items) {
+  const gone = dismissedNotices();
+  const now = Date.now();
+  const show = (items || []).filter(function (n) {
+    return gone.indexOf(n.id) < 0 && (!n.ts || now - n.ts < NOTICE_DAYS * 86400000);
+  }).slice(0, 3);
+
+  noticeBox.innerHTML = "";
+  if (!show.length) { noticeBox.hidden = true; return; }
+
+  const frag = document.createDocumentFragment();
+  show.forEach(function (n) {
+    const d = document.createElement("div");
+    d.className = "notice";
+    const ic = document.createElement("span");
+    ic.className = "ni";
+    ic.textContent = "📢";
+    const body = document.createElement("div");
+    body.className = "nb";
+    const tx = document.createElement("div");
+    tx.className = "ntx";
+    tx.textContent = n.text;
+    const dt = document.createElement("div");
+    dt.className = "nd";
+    dt.textContent = fmtShort(n.ts);
+    body.appendChild(tx);
+    if (n.ts) body.appendChild(dt);
+    const x = document.createElement("button");
+    x.type = "button";
+    x.className = "nclose";
+    x.dataset.id = n.id;
+    x.setAttribute("aria-label", "Dismiss");
+    x.textContent = "✕";
+    d.appendChild(ic);
+    d.appendChild(body);
+    d.appendChild(x);
+    frag.appendChild(d);
+  });
+  noticeBox.appendChild(frag);
+  noticeBox.hidden = false;
+}
+
+noticeBox.addEventListener("click", function (e) {
+  const x = e.target.closest(".nclose");
+  if (!x) return;
+  const arr = dismissedNotices();
+  arr.push(x.dataset.id);
+  try { localStorage.setItem("ez_nd", JSON.stringify(arr.slice(-50))); } catch (err) { /* ignore */ }
+  const saved = lsGet("notices");
+  renderNotices(saved && saved.items);
+});
+
+function loadNotices() {
+  const saved = lsGet("notices");
+  if (saved) renderNotices(saved.items);
+  if (navigator.onLine === false || lsFresh("notices", 120000)) return;
+  readDoc("settings", "notices")
+    .then(function (d) {
+      const obj = { items: cleanNotices(d && d.items) };
+      lsSet("notices", obj);
+      renderNotices(obj.items);
+    })
+    .catch(function () { /* keep what is on the phone */ });
+}
+
+/* ----- Notice board: admin tab ----- */
+const nAdminList = $("nAdminList");
+
+function renderNoticeAdmin() {
+  nAdminList.innerHTML = "";
+  if (!adminNotices || !adminNotices.length) {
+    emptyText(nAdminList, "No notices yet");
+    return;
+  }
+  const frag = document.createDocumentFragment();
+  adminNotices.forEach(function (n) {
+    const box = document.createElement("div");
+    box.className = "note";
+    const t = document.createElement("div");
+    t.className = "t";
+    t.textContent = n.text;
+    const s = document.createElement("div");
+    s.className = "s";
+    s.textContent = fmtFull(n.ts);
+    const acts = document.createElement("div");
+    acts.className = "acts";
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "del";
+    del.dataset.id = n.id;
+    del.textContent = "Delete";
+    acts.appendChild(del);
+    box.appendChild(t);
+    box.appendChild(s);
+    box.appendChild(acts);
+    frag.appendChild(box);
+  });
+  nAdminList.appendChild(frag);
+}
+
+function loadNoticeAdmin() {
+  showMsg("Loading...", "");
+  readDoc("settings", "notices")
+    .then(function (d) {
+      adminNotices = cleanNotices(d && d.items);
+      renderNoticeAdmin();
+      showMsg("");
+    })
+    .catch(function () { showMsg("Could not load. Check rules and internet.", "err"); });
+}
+
+function saveNotices(arr, okMsg, btn) {
+  if (btn) btn.disabled = true;
+  showMsg("Saving...", "");
+  return loadFirebase()
+    .then(function (db) { return db.collection("settings").doc("notices").set({ items: arr }); })
+    .then(function () {
+      adminNotices = arr;
+      lsSet("notices", { items: arr });
+      renderNotices(arr);
+      renderNoticeAdmin();
+      showMsg(okMsg, "ok");
+    })
+    .catch(function () { showMsg("Could not save. Check the Firestore rules for the settings collection and your internet.", "err"); })
+    .then(function () { if (btn) btn.disabled = false; });
+}
+
+$("tabNotice").addEventListener("click", function () {
+  if (editingId) resetForm();
+  switchTab("notice");
+});
+
+/* ---------- Admin: Update tab (settings/app) ---------- */
+function loadUpdateAdmin() {
+  $("uCur").textContent = String(APP_VERSION);
+  readDoc("settings", "app")
+    .then(function (d) {
+      if (!d) return;
+      $("uVer").value = d.version != null ? d.version : "";
+      $("uUrl").value = d.url || "";
+      $("uNote").value = d.note || "";
+      $("uForce").checked = d.force === true;
+    })
+    .catch(function () { showMsg("Could not load update info. Check your internet.", "err"); });
+}
+
+$("tabUpdate").addEventListener("click", function () {
+  if (editingId) resetForm();
+  switchTab("update");
+});
+
+$("uSave").addEventListener("click", function () {
+  const ver = Number($("uVer").value);
+  const url = $("uUrl").value.trim();
+  const note = $("uNote").value.trim();
+  if (!ver || ver < 1 || ver >= 100000 || Math.floor(ver) !== ver) { showMsg("Version must be a whole number like 2.", "err"); return; }
+  if (url && !/^https?:\/\/.+/.test(url)) { showMsg("Link must start with http:// or https://", "err"); return; }
+  const btn = $("uSave");
+  btn.disabled = true;
+  loadFirebase()
+    .then(function (db) {
+      return db.collection("settings").doc("app").set({ version: ver, url: url, note: note.slice(0, 300), force: $("uForce").checked });
+    })
+    .then(function () { lsBust(); showMsg("Saved. Apps with an older version will see the update alert.", "ok"); })
+    .catch(function () { showMsg("Could not save. Publish the new Firestore rules and check your internet.", "err"); })
+    .then(function () { btn.disabled = false; });
+});
+
+$("nPost").addEventListener("click", function () {
+  const text = $("nText").value.trim();
+  if (!text) { showMsg("Write the notice first.", "err"); return; }
+  if (!adminNotices) { showMsg("Still loading. Try again in a moment.", "err"); return; }
+  const now = Date.now();
+  const arr = [{ id: String(now), text: text.slice(0, 300), ts: now }].concat(adminNotices).slice(0, 20);
+  saveNotices(arr, "Notice posted ✓", $("nPost")).then(function () { $("nText").value = ""; });
+});
+
+nAdminList.addEventListener("click", function (e) {
+  const b = e.target.closest(".del");
+  if (!b || !adminNotices) return;
+  const id = b.dataset.id;
+  askConfirm("Delete notice?", "This notice will be removed for all users.", "Delete", true).then(function (ok) {
+    if (!ok) return;
+    saveNotices(adminNotices.filter(function (n) { return n.id !== id; }), "Notice deleted ✓", null);
+  });
+});
+
+/* ---------- Exam countdown (Exam / Board routine) ---------- */
+const MONTHS = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
+
+// Understands: 12 Nov, 12 November 2026, Nov 12, 12/11/2026, 12-11-26, 2026-11-12
+function parseDayText(str) {
+  const s = String(str || "").toLowerCase();
+  let m, d, mo, y = 0;
+  if ((m = s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/))) {
+    y = +m[1]; mo = +m[2] - 1; d = +m[3];
+  } else if ((m = s.match(/(\d{1,2})\s*[\/.\-]\s*(\d{1,2})\s*[\/.\-]\s*(\d{2,4})/))) {
+    d = +m[1]; mo = +m[2] - 1; y = +m[3]; if (y < 100) y += 2000;
+  } else if ((m = s.match(/(\d{1,2})(?:st|nd|rd|th)?\s*(?:of\s+)?([a-z]{3,9})\.?,?\s*(\d{4})?/)) && MONTHS[m[2].slice(0, 3)] !== undefined) {
+    d = +m[1]; mo = MONTHS[m[2].slice(0, 3)]; y = m[3] ? +m[3] : 0;
+  } else if ((m = s.match(/([a-z]{3,9})\.?\s*(\d{1,2})(?:st|nd|rd|th)?,?\s*(\d{4})?/)) && MONTHS[m[1].slice(0, 3)] !== undefined) {
+    mo = MONTHS[m[1].slice(0, 3)]; d = +m[2]; y = m[3] ? +m[3] : 0;
+  } else {
+    return null;
+  }
+  if (!(d >= 1 && d <= 31 && mo >= 0 && mo <= 11)) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  let dt;
+  if (y) {
+    dt = new Date(y, mo, d);
+  } else {
+    dt = new Date(today.getFullYear(), mo, d);
+    // no year written and the date is long past: it means next year
+    if (dt.getTime() < today.getTime() - 60 * 86400000) dt = new Date(today.getFullYear() + 1, mo, d);
+  }
+  return dt;
+}
+
+// whole days from today (0 = today). null when the text has no date.
+function daysLeft(str) {
+  const dt = parseDayText(str);
+  if (!dt) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return Math.round((dt.getTime() - today.getTime()) / 86400000);
+}
+
+function leftText(n) {
+  if (n === 0) return "Today";
+  if (n === 1) return "Tomorrow";
+  return n + " days left";
+}
+
+/* ---------- Dark mode and Smooth mode (menu) ---------- */
+function isDarkNow() {
+  const t = document.documentElement.getAttribute("data-theme");
+  if (t === "dark") return true;
+  if (t === "light") return false;
+  return false;   // default is light; dark only when the user turns it on in the menu
+}
+
+function themeLabel() {
+  return "Dark mode: " + (isDarkNow() ? "On" : "Off");
+}
+
+function toggleTheme() {
+  const next = isDarkNow() ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", next);
+  try { localStorage.setItem("ez_theme", next); } catch (e) { /* ignore */ }
+  const m = document.querySelector('meta[name="theme-color"]');
+  if (m) m.setAttribute("content", next === "dark" ? "#1a2030" : "#4f46e5");
+}
+
+function liteLabel() {
+  return "Smooth mode: " + (document.documentElement.classList.contains("lite") ? "On" : "Off");
+}
+
+// Smooth mode = fade-only animations (best for slow phones)
+function toggleLite() {
+  const on = !document.documentElement.classList.contains("lite");
+  document.documentElement.classList.toggle("lite", on);
+  try { localStorage.setItem("ez_lite", on ? "1" : "0"); } catch (e) { /* ignore */ }
+}
+
+/* ---------- Part 4: "Update available" alert (APK only) ---------- */
+function isNative() {
+  try { return !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform()); }
+  catch (e) { return false; }
+}
+
+let updateShowing = false;
+function checkUpdate() {
+  if (!isNative() || updateShowing || navigator.onLine === false) return;
+  readDoc("settings", "app")
+    .then(function (d) {
+      if (!d) return;
+      const ver = Number(d.version);
+      if (!ver || ver <= APP_VERSION) return;
+      const force = d.force === true;
+      if (!force) {
+        try {
+          const s = JSON.parse(localStorage.getItem("ez_upd_skip") || "null");
+          if (s && s.v === ver && Date.now() - s.t < 86400000) return;
+        } catch (e) { /* ignore */ }
+      }
+      showUpdateDialog(d, ver, force);
+    })
+    .catch(function () { /* ignore: no internet or no settings doc yet */ });
+}
+
+function showUpdateDialog(d, ver, force) {
+  updateShowing = true;
+  const no = $("dlgNo");
+  const oldNo = no.textContent;
+  no.textContent = "Later";
+  no.hidden = force;
+  askConfirm("Update available 🚀", d.note || "A new version of EduZone is ready. Please update.", "Install")
+    .then(function (ok) {
+      no.textContent = oldNo;
+      no.hidden = false;
+      updateShowing = false;
+      if (ok) {
+        window.open(d.url || APK_FALLBACK_URL, "_blank");
+        if (force) setTimeout(function () { showUpdateDialog(d, ver, force); }, 1500);
+        return;
+      }
+      if (force) { showUpdateDialog(d, ver, force); return; }
+      try { localStorage.setItem("ez_upd_skip", JSON.stringify({ v: ver, t: Date.now() })); } catch (e) { /* ignore */ }
+    });
+}
+
+/* ---------- Part 5: Push notifications (APK only) ---------- */
+function pushPlugin() {
+  try { return window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.FirebaseMessaging || null; }
+  catch (e) { return null; }
+}
+
+function pushOff() {
+  try { return localStorage.getItem("ez_push_off") === "1"; } catch (e) { return false; }
+}
+
+function pushLabel() {
+  return pushOff() ? "Notifications: Off" : "Notifications: On";
+}
+
+function startPush() {
+  const P = pushPlugin();
+  if (!isNative() || !P || pushOff()) return;
+  P.checkPermissions()
+    .then(function (r) {
+      if (r && r.receive === "granted") return r;
+      return P.requestPermissions();
+    })
+    .then(function (r) {
+      if (r && r.receive === "granted") return P.subscribeToTopic({ topic: "all" });
+    })
+    .catch(function () { /* ignore */ });
+}
+
+let pushListening = false;
+function setupPushListeners() {
+  const P = pushPlugin();
+  if (!isNative() || !P || pushListening) return;
+  pushListening = true;
+  try {
+    P.addListener("notificationReceived", function (ev) {
+      const n = (ev && ev.notification) || {};
+      if (n.title || n.body) toast((n.title || "") + (n.body ? " — " + n.body : ""));
+      try { afterPublish(); lsBust(); loadNotices(); } catch (e) { /* ignore */ }
+    });
+  } catch (e) { /* ignore */ }
+}
+
+function togglePush(btn) {
+  const P = pushPlugin();
+  const off = !pushOff();
+  try { localStorage.setItem("ez_push_off", off ? "1" : "0"); } catch (e) { /* ignore */ }
+  if (P) {
+    if (off) P.unsubscribeFromTopic({ topic: "all" }).catch(function () { /* ignore */ });
+    else startPush();
+  }
+  btn.children[1].textContent = pushLabel();
+}
+
+loadNotices();
+setupPushListeners();
+setTimeout(checkUpdate, 2500);
+
 /* ---------- Start ---------- */
 if (user && user.type === "guest") {
   // Guest login was removed: clear the old guest session and ask for a real login
@@ -4174,6 +4933,7 @@ if (user && user.type === "guest") {
 } else if (user) {
   renderUserBox();
   syncMe();
+  startPush();
 } else {
   showAuth();
 }

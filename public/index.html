@@ -17,7 +17,12 @@
       var mem = navigator.deviceMemory || 4;
       var cores = navigator.hardwareConcurrency || 4;
       var sd = navigator.connection && navigator.connection.saveData;
-      if (mem <= 2 || cores <= 4 || sd) document.documentElement.className += " lite";
+      var pref = null;
+      try { pref = localStorage.getItem("ez_lite"); } catch (e2) { pref = null; }
+      if (pref === "1" || (pref !== "0" && (mem <= 2 || cores <= 4 || sd))) document.documentElement.className += " lite";
+      var th = null;
+      try { th = localStorage.getItem("ez_theme"); } catch (e3) { th = null; }
+      if (th === "dark" || th === "light") document.documentElement.setAttribute("data-theme", th);
     } catch (e) { /* ignore */ }
 
     // Block pinch zoom on iOS (no scroll-blocking listeners, so scrolling stays smooth)
@@ -42,6 +47,13 @@
     </div>
     <button class="tbtn" id="profBtn" type="button" aria-label="My profile" hidden>Profile</button>
   </header>
+
+  <div class="notices" id="noticeBox" hidden></div>
+
+  <div class="search">
+    <input class="inp" id="homeSearch" type="search" autocomplete="off" placeholder="Search notes, papers, question bank...">
+  </div>
+  <div id="searchRes" hidden></div>
 
   <main class="grid" id="subjects">
     <button class="card c1" data-subject="bengali">
@@ -144,6 +156,17 @@
         <button class="close-btn" id="ctClose" type="button">✕</button>
       </div>
       <div id="ctBody"></div>
+    </div>
+  </section>
+
+  <!-- Saved page -->
+  <section class="panel" id="svView" hidden>
+    <div class="panel-in">
+      <div class="panel-head">
+        <h2>⭐ Saved</h2>
+        <button class="close-btn" id="svClose" type="button">✕</button>
+      </div>
+      <div id="svList"></div>
     </div>
   </section>
 
@@ -381,6 +404,8 @@
           <button class="tab" id="tabQb" type="button">Question Bank</button>
           <button class="tab" id="tabUsers" type="button">Users</button>
           <button class="tab" id="tabContact" type="button">Contact</button>
+          <button class="tab" id="tabNotice" type="button">Notice</button>
+          <button class="tab" id="tabUpdate" type="button">Update</button>
         </div>
 
         <!-- Upload note -->
@@ -528,6 +553,37 @@
           <input class="inp" id="cMail" type="email" maxlength="150" autocapitalize="none" placeholder="you@gmail.com">
 
           <button class="btn" id="cSave" type="button">Save contact details</button>
+        </div>
+
+        <!-- Notice board (admin) -->
+        <div id="noticeView" hidden>
+          <p class="hint" style="margin-top:14px">Notices are shown on the home screen for all users (latest 3, for 30 days).</p>
+
+          <label class="lbl" for="nText">Notice</label>
+          <textarea class="inp" id="nText" rows="3" maxlength="300" placeholder="e.g. Tomorrow's Math class is at 5:00 PM"></textarea>
+
+          <button class="btn" id="nPost" type="button">Post notice</button>
+
+          <p class="lbl" style="margin-top:24px">Posted notices</p>
+          <div id="nAdminList"></div>
+        </div>
+
+        <!-- App update (admin) -->
+        <div id="updateView" hidden>
+          <p class="hint" style="margin-top:14px">Build a new APK, upload it, then raise the version here. Apps with a smaller version number will see "Update available". This app's version: <b id="uCur">1</b></p>
+
+          <label class="lbl" for="uVer">Latest version number</label>
+          <input class="inp" id="uVer" type="number" min="1" step="1" placeholder="e.g. 2">
+
+          <label class="lbl" for="uUrl">APK download link (optional)</label>
+          <input class="inp" id="uUrl" type="url" placeholder="https://github.com/.../EduZone.apk">
+
+          <label class="lbl" for="uNote">What's new (optional)</label>
+          <textarea class="inp" id="uNote" rows="3" maxlength="300" placeholder="e.g. New notes and bug fixes"></textarea>
+
+          <label class="lbl" style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="uForce"> Force update (users cannot skip)</label>
+
+          <button class="btn" id="uSave" type="button">Save update info</button>
         </div>
 
         <!-- Routine -->
