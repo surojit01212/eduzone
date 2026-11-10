@@ -10,6 +10,8 @@ const firebaseConfig = {
   appId: "1:619428019916:web:c9eb610c21e234e16acc69"
 };
 
+let lastNetErr = "";
+
 /* ---------- Lazy Firebase loader (timeout + retry) ---------- */
 const FB_BASE = "https://www.gstatic.com/firebasejs/10.12.2/";
 let firebasePromise = null;
@@ -205,17 +207,30 @@ function sdkRead(spec) {
 }
 
 function readCol(spec) {
-  return restRead(spec).catch(function (err) {
-    if (!err || !err.http) throw err;   // offline / slow network: do not try twice
-    return sdkRead(spec);
-  });
+  return restRead(spec)
+    .catch(function (err) {
+      // one quick retry for a short network hiccup (not for timeout, not when offline)
+      if (err && !err.http && err.message !== "timeout" && navigator.onLine !== false) {
+        return new Promise(function (r) { setTimeout(r, 700); }).then(function () { return restRead(spec); });
+      }
+      throw err;
+    })
+    .catch(function (err) {
+      lastNetErr = err && err.http ? String(err.http) : "";
+      if (!err || !err.http) throw err;   // offline / slow network: do not try twice
+      // 400 / 403 = wrong key or locked database: the SDK would fail the same way, so do not wait for it
+      if (err.http === 400 || err.http === 403) throw err;
+      return sdkRead(spec);
+    });
 }
 
 function readDoc(col, id) {
   return restFetch(FS_URL + "/" + col + "/" + encodeURIComponent(id) + "?key=" + firebaseConfig.apiKey, null, 10000)
     .then(function (d) { return d ? fsDoc(d) : null; })
     .catch(function (err) {
+      lastNetErr = err && err.http ? String(err.http) : "";
       if (!err || !err.http) throw err;
+      if (err.http === 400 || err.http === 403) throw err;
       return loadFirebase()
         .then(function (db) { return withTimeout(db.collection(col).doc(id).get(), 15000); })
         .then(function (d) { return d.exists ? Object.assign({ id: d.id }, d.data()) : null; });
@@ -253,6 +268,8 @@ function lsBust() {
 const NET_MSG = "Please check your internet connection";
 
 function offlineText() {
+  if (lastNetErr === "400") return "Firebase refused the request (400). Check the API key in app.js.";
+  if (lastNetErr === "403") return "Database is locked (403). Check Firestore rules and that the database exists.";
   return NET_MSG;
 }
 
@@ -331,27 +348,6 @@ const rtView = $("rtView");
 const smView = $("smView");
 const authView = $("authView");
 
-/* ---------- Install button (downloads the Android APK from GitHub Releases) ---------- */
-// "latest" always points to your newest release, so after every new build the
-// button gives the new APK. The APK file in the release must be named EduZone.apk.
-// To use a fixed version instead, use:
-// https://github.com/surojit01212/eduzone/releases/download/v2/EduZone.apk
-const APK_URL = "https://github.com/surojit01212/eduzone/releases/latest/download/EduZone.apk";
-
-(function setupInstall() {
-  const btn = $("installBtn");
-  if (!btn) return;
-  // Already inside the installed app (APK / home-screen app): no button needed
-  let inApp = false;
-  try {
-    inApp = (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
-      window.navigator.standalone === true ||
-      String(document.referrer || "").indexOf("android-app://") === 0;
-  } catch (e) { inApp = false; }
-  if (inApp) return;
-  btn.href = APK_URL;
-  btn.hidden = false;
-})();
 const msgEl = $("msg");
 const aMsg = $("aMsg");
 const smMsg = $("smMsg");
@@ -781,7 +777,11 @@ function enterApp() {
 function authError(err, el) {
   const c = (err && err.code) || "";
   let m = "Something went wrong. Please try again.";
-  if (!c || c === "auth/network-request-failed") {
+  if (c === "auth/invalid-api-key" || c === "auth/api-key-not-valid.-please-pass-a-valid-api-key.") {
+    m = "Wrong Firebase API key in app.js.";
+  } else if (c === "auth/unauthorized-domain") {
+    m = "Add this website in Firebase Authentication > Settings > Authorized domains.";
+  } else if (!c || c === "auth/network-request-failed") {
     m = NET_MSG;
   } else if (c === "auth/invalid-credential" || c === "auth/wrong-password" ||
              c === "auth/user-not-found" || c === "auth/invalid-login-credentials") {
